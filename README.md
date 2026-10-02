@@ -44,6 +44,8 @@ The build writes localized entry pages and shared assets to `site/dist/client/`.
 
 The user dashboard points to the configured `https://dash.rsrs.rs` destination. Website build checks do not verify account services, encryption, installer execution, or benchmark claims. Release and deployment workflows are separate from local validation.
 
+Pushing `main` automatically builds a checksummed development website artifact. A stable `vX.Y.Z` tag publishes those static assets in this repository's Releases. Manual builds remain available. Publication does not deploy the production website; SSH deployment is a separate operation.
+
 ## Configured destinations
 
 | Service | URL |
