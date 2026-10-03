@@ -3,3 +3,4 @@ node_modules/
 .qa/
 target/
 *.db
+site/dist/preview/

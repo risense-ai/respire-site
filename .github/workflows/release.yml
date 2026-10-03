@@ -31,9 +31,13 @@ jobs:
         working-directory: homepage
         run: |
           npm ci
+          npm run check
           npm test
-          npm run build:preview
           npm run build
+          npx playwright install --with-deps chromium
+          npm run verify:browser
+          npm run build:dev
+          VITE_SITE_BASE=/preview/ VITE_SITE_OUT_DIR=../site/dist/preview VITE_DASHBOARD_URL=/dashboard VITE_ADMIN_URL=/admin npm run verify:browser
       - name: Package the exact website revision
         id: package
         run: |
@@ -41,9 +45,12 @@ jobs:
           SHA="$(git rev-parse HEAD)"
           test -s site/dist/client/index.html
           test -s site/dist/client/zh/index.html
+          test -s site/dist/preview/index.html
+          test -s site/dist/preview/zh/index.html
           mkdir artifact
           printf '%s\n' "$SHA" > artifact/site-sha.txt
           tar -czf "artifact/respire-site-${SHA}.tar.gz" -C site/dist/client .
+          tar -czf "artifact/respire-site-preview-${SHA}.tar.gz" -C site/dist/preview .
           (cd artifact && sha256sum *.tar.gz site-sha.txt > SHA256SUMS)
           echo "sha=$SHA" >> "$GITHUB_OUTPUT"
       - uses: actions/upload-artifact@v4

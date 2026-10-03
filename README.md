@@ -1,69 +1,47 @@
 # Respire Website
 
-Source for the Respire product website, localized content, and static design prototypes. This repository contains no memory engine, CLI, or synchronization server implementation.
+The Respire product website: local memory, useful context and continuity across AI tools.
+
+| Destination | URL |
+| --- | --- |
+| Website | https://rsrs.rs |
+| Account dashboard | https://dash.rsrs.rs |
+| Administration | https://admin.rsrs.rs |
+| API | https://api.rsrs.rs |
 
 ```mermaid
 flowchart LR
-  Homepage[homepage source] --> Build[Vite build]
-  Build --> Static[site/dist/client]
-  Static --> Hosting[Static web hosting]
-  Prototypes[Standalone prototypes] --> Preview[Local HTTP preview]
+  Source[homepage React/Vite] --> Checks[TypeScript and browser checks]
+  Checks --> Site[Production static assets]
+  Checks --> Preview[Development preview assets]
+  Site --> Artifact[Checksummed CI archive]
+  Preview --> Artifact
 ```
 
-## Repository map
-
-| Directory | Purpose |
-| --- | --- |
-| `homepage/` | Current React website: English at `/`, Chinese at `/zh/` |
-| `homepage/public/preview/` | Standalone client demonstrations |
-| `homepage/prototypes/multilingual-v2/` | Compact six-language static prototype |
-| `homepage/prototypes/lumina-v3/` | Alternative six-language static prototype |
-| `site/` | Separate Sites/Vinext starter and its platform tooling |
-| `site/dist/client/` | Generated current-website assets |
-
-## Develop and verify
+## Build
 
 ```sh
 cd homepage
 npm ci
+npm run check
 npm test
-npm run build:preview
 npm run build
+npm run build:dev
 ```
 
-The build writes localized entry pages and shared assets to `site/dist/client/`. Keep that distribution directory aligned with source changes. See [homepage documentation](homepage/README.md) for translation and preview workflows.
+Production files are written to `site/dist/client/`; preview files to `site/dist/preview/`. English is the default language, with Chinese at `/zh/`. The preview uses `/preview/` and links to the development dashboard and administration routes.
 
-## Boundaries
+See [homepage documentation](homepage/README.md) for browser checks, motion controls and configuration. Preserve [third-party notices](THIRD_PARTY_NOTICES.md) and the vendored CSS license with the source.
 
-| Component | Connection |
-| --- | --- |
-| [CLI](https://github.com/risense-ai/respire-cli) | Commands and installation instructions |
-| [Documentation](https://github.com/risense-ai/respire-docs) | Architecture and user documentation |
-| [Server](https://github.com/risense-ai/respire-server) | Optional website deployment integration and dashboard routes |
-| Core | No source access or build dependency |
-
-The user dashboard points to the configured `https://dash.rsrs.rs` destination. Website build checks do not verify account services, encryption, installer execution, or benchmark claims. Release and deployment workflows are separate from local validation.
-
-Pushing `main` automatically builds a checksummed development website artifact. A stable `vX.Y.Z` tag publishes those static assets in this repository's Releases. Manual builds remain available. Publication does not deploy the production website; SSH deployment is a separate operation.
-
-## Configured destinations
-
-| Service | URL |
-| --- | --- |
-| Website | `https://rsrs.rs` |
-| User dashboard | `https://dash.rsrs.rs` |
-| Administration | `https://admin.rsrs.rs` |
-| API | `https://api.rsrs.rs` |
-
-These owner-supplied destinations are configuration, not evidence of DNS, HTTPS or deployed service availability.
-
-## CLI package
-
-The npm launcher provides the `rsrs` command.
+## CLI
 
 ```sh
 npm i -g @rsrsai/cli
 # or
 pnpm add -g @rsrsai/cli
+rsrs doctor
 rsrs --help
+rsrs recall "query" --titles --json
 ```
+
+The website workflow builds and verifies both distributions, records the source revision and uploads checksummed archives. A stable tag publishes release assets; deployment is separate.

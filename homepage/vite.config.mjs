@@ -1,10 +1,13 @@
 import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
+import tailwindcss from "@tailwindcss/vite";
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { resolve } from "node:path";
 
 const ROOT = import.meta.dirname;
-const OUT = resolve(ROOT, "../site/dist/client");
+const OUT = resolve(ROOT, process.env.VITE_SITE_OUT_DIR || "../site/dist/client");
+const BASE = process.env.VITE_SITE_BASE || "/";
+if (!/^\/(?:[a-zA-Z0-9_-]+\/)*$/.test(BASE)) throw new Error("Invalid website base path");
 
 /// Build the default language at / and other languages at /<locale>/.
 ///
@@ -21,9 +24,9 @@ const LOCALES = ["en", "zh"];
 const HEAD = {
   en: {
     lang: "en",
-    title: "Respire — Teach once. Every AI remembers.",
+    title: "Respire — Memory as natural as breathing",
     description:
-      "Respire turns your background, preferences, and project experience into one memory tree. Stored locally, end-to-end encrypted, and shared with your AI tools only within the scope you choose.",
+      "A local-first memory layer for the way you think. Carry useful context across your AI tools and sessions.",
   },
   zh: {
     lang: "zh-CN",
@@ -40,9 +43,9 @@ const HEAD = {
 function localize(html, locale) {
   const head = HEAD[locale];
   const alternates = [
-    '<link rel="alternate" hreflang="en" href="/" />',
-    '<link rel="alternate" hreflang="zh-Hans" href="/zh/" />',
-    '<link rel="alternate" hreflang="x-default" href="/" />',
+    `<link rel="alternate" hreflang="en" href="${BASE}" />`,
+    `<link rel="alternate" hreflang="zh-Hans" href="${BASE}zh/" />`,
+    `<link rel="alternate" hreflang="x-default" href="${BASE}" />`,
   ].join('\n    ');
   return html
     .replace(/<html lang="[^"]*"/, `<html lang="${head.lang}"`)
@@ -72,6 +75,7 @@ function multiLocale() {
 }
 
 export default defineConfig({
+  base: BASE,
   build: {
     outDir: OUT,
     emptyOutDir: true,
@@ -86,5 +90,6 @@ export default defineConfig({
       clientFiles: ["./src/main.jsx"],
     },
   },
-  plugins: [react(), multiLocale()],
+  publicDir: "assets",
+  plugins: [react(), tailwindcss(), multiLocale()],
 });
