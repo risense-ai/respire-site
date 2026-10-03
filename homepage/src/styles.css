@@ -191,3 +191,8 @@ body{background:#faf8f4;color:#1b1c19}.logo,.logo.light{font-family:var(--font-s
 .cycle-steps>button>strong,.respire-faq [data-slot=accordion-trigger],.respire-faq [data-slot=accordion-content],.principles h3,.scenario-grid h3,.control-items h3{font-family:var(--font-serif)}
 /* Install & command prose keeps its original tool-strip neutrality (sans), commands stay mono. */
 .command-grid article>p,.command-note{font-family:var(--font-sans)}
+/* Hero trust note: readable sans instead of micro mono. */
+.hero-note{font-family:var(--font-sans);font-size:12px;letter-spacing:.2px}
+@media(min-width:1450px){.hero-note{font-size:13px}}
+@media(max-width:950px){.hero-note{font-size:10px}}
+@media(max-width:767px){.hero-note{font-size:11px}}
