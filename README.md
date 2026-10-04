@@ -45,3 +45,10 @@ rsrs recall "query" --titles --json
 ```
 
 The website workflow builds and verifies both distributions, records the source revision and uploads checksummed archives. A stable tag publishes release assets; deployment is separate.
+
+## License
+
+First-party material is offered under [PolyForm Noncommercial 1.0.0](LICENSE).
+Personal noncommercial use and self-hosting are permitted; commercial use,
+including internal commercial deployment, requires a separate written license.
+See [commercial licensing and component exceptions](COMMERCIAL-LICENSE.md).
