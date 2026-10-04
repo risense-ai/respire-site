@@ -47,7 +47,8 @@
   --radius-md: calc(var(--radius) - 3px);
   --radius-lg: var(--radius);
   --radius-xl: calc(var(--radius) + 8px);
-  --font-sans: Inter, ui-sans-serif, -apple-system, BlinkMacSystemFont, "SF Pro Display", "PingFang SC", "Microsoft YaHei", sans-serif;
+  --font-sans: "Work Sans Variable", "PingFang SC", "Microsoft YaHei", "Helvetica Neue", Arial, sans-serif;
+  --font-serif: "Fraunces Variable", "Noto Serif SC Variable", Georgia, "Songti SC", "Noto Serif CJK SC", serif;
   --font-mono: "SFMono-Regular", Consolas, "Liberation Mono", monospace;
 }
 
@@ -85,7 +86,7 @@ body {
   margin: 0;
   background: #f7f8fc;
   color: #11162a;
-  font-family: Inter, ui-sans-serif, -apple-system, BlinkMacSystemFont, "SF Pro Display", "PingFang SC", "Microsoft YaHei", sans-serif;
+  font-family: var(--font-sans);
   -webkit-font-smoothing: antialiased;
   text-rendering: optimizeLegibility;
 }
@@ -2305,4 +2306,33 @@ footer {
     animation-iteration-count: 1 !important;
     transition-duration: .01ms !important;
   }
+}
+
+/* ---- Typography: the same kept-notebook voice as the homepage ----
+   Content voice (headings & prose): Fraunces + Noto Serif SC.
+   Actions/labels: Work Sans. Annotations stay mono. */
+.hero-copy h1,
+.section-heading h2,
+.everywhere-copy h2,
+.security-copy h2,
+.final-cta h2,
+.light-heading h2,
+.panel-heading h3,
+.problem-card h3,
+.step-copy h3,
+.section-heading > p,
+.everywhere-copy > p,
+.security-copy > p,
+.learn-copy p,
+.step-copy p {
+  font-family: var(--font-serif);
+}
+.final-cta h2 em,
+.hero-copy h1 em {
+  font-family: var(--font-serif);
+  font-style: italic;
+}
+.zh-em-kai h1 em, .zh-em-kai h2 em, .zh-em-kai h3 em {
+  font-family: "Kaiti SC", "STKaiti", "KaiTi", "BiauKai", var(--font-serif);
+  font-style: normal;
 }
