@@ -17,6 +17,7 @@ export function Security({ admin, token, me, notify, onReload, open, onLogout })
   const [emailBusy, setEmailBusy] = useState(false);
   const [totpSecret, setTotpSecret] = useState('');
   const [totpCode, setTotpCode] = useState('');
+  const [totpBusy, setTotpBusy] = useState(false);
   const totp = !!me?.totp;
 
   const passPath = admin ? '/admin/password' : '/api/self/password';
@@ -134,18 +135,25 @@ export function Security({ admin, token, me, notify, onReload, open, onLogout })
           <h2>{t('totpTitle')}</h2>
           <p>{t('totpApps')}</p>
           <div className="row" style={{ gap: 8, marginBottom: 16 }}>
-            <Button onClick={async () => {
+            <Button disabled={totp || totpBusy} onClick={async () => {
+              if (totpBusy) return;
+              setTotpBusy(true); setError('');
               try {
                 const r = await api(totpBegin, { method: 'POST', token });
                 setTotpSecret(r.secret);
+                setTotpCode('');
               } catch (err) { setError(err.message); }
+              finally { setTotpBusy(false); }
             }}>{t('startBind')}</Button>
           </div>
           {totpSecret ? <div className="setup-key"><code>{totpSecret}</code></div> : null}
-          <label className="field">{t('verify')}<input value={totpCode} onChange={(e) => setTotpCode(e.target.value)} /></label>
+          <Badge tone={totp ? 'green' : 'neutral'}>{totp ? t('totpOn') : t('totpOff')}</Badge>
+          <label className="field">{t('totpCode')}<input disabled={totpBusy} inputMode="numeric" autoComplete="one-time-code" maxLength={6} value={totpCode} onChange={(e) => setTotpCode(e.target.value)} /></label>
           {error && <p className="form-error" role="alert">{error}</p>}
           <div className="key-actions">
-            <Button primary onClick={async () => {
+            <Button primary disabled={totp || !totpSecret || !/^[0-9]{6}$/.test(totpCode) || totpBusy} onClick={async () => {
+              if (totpBusy) return;
+              setTotpBusy(true); setError('');
               try {
                 await api(totpConfirm, { method: 'POST', token, body: { code: totpCode } });
                 await onReload?.();
@@ -154,8 +162,11 @@ export function Security({ admin, token, me, notify, onReload, open, onLogout })
                 setTotpSecret('');
                 setTotpCode('');
               } catch (err) { setError(err.message); }
+              finally { setTotpBusy(false); }
             }}>{t('confirmOn')}</Button>
-            <Button danger onClick={async () => {
+            <Button danger disabled={!totp || !/^[0-9]{6}$/.test(totpCode) || totpBusy} onClick={async () => {
+              if (totpBusy) return;
+              setTotpBusy(true); setError('');
               try {
                 await api(totpDisable, { method: 'POST', token, body: { code: totpCode } });
                 await onReload?.();
@@ -164,6 +175,7 @@ export function Security({ admin, token, me, notify, onReload, open, onLogout })
                 setTotpSecret('');
                 setTotpCode('');
               } catch (err) { setError(err.message); }
+              finally { setTotpBusy(false); }
             }}>{t('close')}</Button>
           </div>
         </section>

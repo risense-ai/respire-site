@@ -7,7 +7,7 @@ import {
 } from '@phosphor-icons/react';
 import { Button, Badge, Heading, Empty, Note, SecretResult, copy, download, useI18n } from './ui.jsx';
 import { decryptItem, deriveDataKey, encryptItem, generateSecretKey, unwrapUrk, wrapVaultV4 } from './crypto.js';
-import { api, USER_KEY, readToken, readSecret, readSuper, superFresh, superFreshText, writeSecret, writeSuper } from './api.js';
+import { api, readSecret, readSuper, readToken, USER_KEY, superFresh, superFreshText, writeSecret, writeSuper } from './api.js';
 import { MemorySync } from './memorySync.js';
 import { Security } from './Security.jsx';
 import { buildIndex, childrenOf, subtreeCount, diaryDays, visibleRows, ROOT_ID, DIARY_ID } from './treeModel.js';
@@ -41,6 +41,23 @@ const KIND_TONES = {
   emotion: 'red',
   time: undefined,
 };
+
+/** Rows per page for the list/card pagers. */
+const PAGE_SIZE = 24;
+
+/** Shared pager for the list and card views: prev/next with a page indicator. */
+function Pager({ total, page, onPage, labels }) {
+  const pageCount = Math.max(1, Math.ceil(total / PAGE_SIZE));
+  if (pageCount <= 1) return null;
+  return (
+    <nav className="pager" aria-label={labels.pager}>
+      <button className="pager-step" disabled={page <= 1} onClick={() => onPage(page - 1)}>{labels.prev}</button>
+      <span className="pager-state">{labels.pageOf.replace('{n}', String(page)).replace('{total}', String(pageCount))}</span>
+      <button className="pager-step" disabled={page >= pageCount} onClick={() => onPage(page + 1)}>{labels.next}</button>
+    </nav>
+  );
+}
+
 import DiaryCalendar from './DiaryCalendar.jsx';
 
 function maskKey(s) {
@@ -52,12 +69,45 @@ function maskKey(s) {
 function EmptyInstallHint() {
   return <Note icon={Terminal}><a href="https://github.com/risense-ai/respire-docs" target="_blank" rel="noreferrer">{t('docsHelp')}</a></Note>;
 }
+
+/** Onboarding card shown in the list/tree/card area while the vault is empty. */
+function EmptyGuide({ notify }) {
+  const steps = [
+    { cmd: 'npm i -g @rsrsai/cli', label: t('guideStepInstall'), desc: t('guideStepInstallDesc') },
+    { cmd: 'rsrs doctor', label: t('guideStepDoctor'), desc: t('guideStepDoctorDesc') },
+  ];
+  return (
+    <div className="empty-guide">
+      <p className="guide-empty-note">{t('emptyNotice')}</p>
+      <h3>{t('guideTitle')}</h3>
+      <p className="guide-sub">{t('guideSub')}</p>
+      <ol className="guide-steps">
+        {steps.map(({ cmd, label, desc }) => (
+          <li key={cmd}>
+            <span className="guide-label">{label}</span>
+            <div className="guide-cmd">
+              <code>{cmd}</code>
+              <button className="icon-button" aria-label={t('copySuper')} onClick={() => copy(cmd, notify)}><Copy size={15} /></button>
+            </div>
+            <p>{desc}</p>
+          </li>
+        ))}
+        <li>
+          <span className="guide-label">{t('guideStepSave')}</span>
+          <p>{t('guideStepSaveDesc')}</p>
+        </li>
+      </ol>
+      <p className="guide-views">{t('guideViews')}</p>
+    </div>
+  );
+}
 export function DashboardPages({
   page, memoryId, token, me, sessions, keys, notify, open, go, onReload, onToken, onLogout,
 }) {
   useI18n();
   const [query, setQuery] = useState('');
   const [items, setItems] = useState(null);
+  const [listPage, setListPage] = useState(1);
   const openMemory = (id) => go(id ? `memories/${encodeURIComponent(id)}` : 'memories');
   const [locked, setLocked] = useState(true);
   const [revealed, setRevealed] = useState(false);
@@ -65,6 +115,10 @@ export function DashboardPages({
   const [vaultInfo, setVaultInfo] = useState(undefined);
   const [viewMode, setViewMode] = useState('tree');
   const [expanded, setExpanded] = useState(() => new Set([ROOT_ID, DIARY_ID]));
+  const list = useMemo(() => (items || []).filter((m) => [m.title, m.content, m.kind, m.project].filter(Boolean).join(' ').toLowerCase().includes(query.toLowerCase())), [items, query]);
+  useEffect(() => {
+    setListPage(current => Math.min(current, Math.max(1, Math.ceil(list.length / PAGE_SIZE))));
+  }, [list.length]);
   // Memoize indexes and search results because TreeBranch depends on index identity.
   // Rebuilding them on every render would reset expanded child rows.
   const treeSource = useMemo(() => {
@@ -306,7 +360,7 @@ export function DashboardPages({
     if (!superFresh()) { setLocked(true); return; }
     unlockMemories(saved, readSecret()).catch((e) => {
       if (e.name === 'AbortError') return;
-      setLoadError(t('memoryLoadInterrupted'));
+      setLocked(true);
       const why = String(e.message || e);
       const hint = e.status === 404
         ? t('noVault')
@@ -464,7 +518,6 @@ export function DashboardPages({
   }
 
   if (page === 'memories') {
-    const list = (items || []).filter((m) => [m.title, m.content, m.kind, m.project].filter(Boolean).join(' ').toLowerCase().includes(query.toLowerCase()));
     const mem = (items || []).find((m) => m.id === memoryId);
     if (locked && items === null) {
       return (
@@ -546,7 +599,7 @@ export function DashboardPages({
             <section className="memory-collection panel" style={{ padding: 20 }}>
               <label className="search-box memory-search">
                 <MagnifyingGlass size={21} />
-                <input aria-label={t('searchMemory')} placeholder={t('searchPh')} value={query} onChange={(e) => setQuery(e.target.value)} />
+                <input aria-label={t('searchMemory')} placeholder={t('searchPh')} value={query} onChange={(e) => { setQuery(e.target.value); setListPage(1); }} />
                 {query && <button className="icon-button" aria-label={t('clear')} onClick={() => setQuery('')}><X size={17} /></button>}
               </label>
               <div className="collection-title">
@@ -562,7 +615,9 @@ export function DashboardPages({
                   </div>
                 </div>
               </div>
-              {query && list.length ? (
+              {emptyVault ? (
+                <EmptyGuide notify={notify} />
+              ) : query && list.length ? (
                 <div className="search-results">
                   {list.slice(0, 200).map((m) => {
                     const path = [];
@@ -590,7 +645,7 @@ export function DashboardPages({
                 </div>
               ) : viewMode === 'card' && list.length ? (
                 <div className="memory-cards">
-                  {list.slice(0, 200).map((m) => {
+                  {list.slice((listPage - 1) * PAGE_SIZE, listPage * PAGE_SIZE).map((m) => {
                     const tags = toTagList(m.tags);
                     const when = m.updated_at || m.created_at || '';
                     const whenText = when ? new Date(when).toLocaleString(getLocale() === 'zh' ? 'zh-CN' : 'en-US', { hour12: false }) : '—';
@@ -609,7 +664,6 @@ export function DashboardPages({
                       </button>
                     );
                   })}
-                  {list.length > 200 ? <p className="hit-more">{t('hitMore', { n: list.length })}</p> : null}
                 </div>
               ) : viewMode === 'tree' && treeSource.length ? (
                 <div className="tree-view">
@@ -647,7 +701,7 @@ export function DashboardPages({
                 <div className="memory-row memory-row-head" role="row" aria-hidden="true">
                   <span>{t('memoryType')}</span><span>{t('fieldTitle').replace(/\s*\(.*\)$/, '')}</span><span>{t('project')}</span><span>{t('updatedAt')}</span><span>{t('fieldTags').replace(/\s*\(.*\)$/, '')}</span><span />
                 </div>
-                {list.map((m) => {
+                {list.slice((listPage - 1) * PAGE_SIZE, listPage * PAGE_SIZE).map((m) => {
                   const tags = toTagList(m.tags);
                   const when = m.updated_at || m.created_at || '';
                   const whenText = when ? new Date(when).toLocaleString(getLocale() === 'zh' ? 'zh-CN' : 'en-US', { hour12: false }) : '—';
@@ -667,6 +721,14 @@ export function DashboardPages({
                 })}
                 {!list.length && !emptyVault && <Empty title={t('noMemoryFound')} text={t('noMemoryHint')} />}
               </div>
+              )}
+              {!query && (viewMode === 'card' || viewMode === 'list') && list.length > PAGE_SIZE && (
+                <Pager
+                  total={list.length}
+                  page={listPage}
+                  onPage={setListPage}
+                  labels={{ pager: t('pager'), prev: t('prevPage'), next: t('nextPage'), pageOf: t('pageOf', { n: '{n}', total: '{total}' }) }}
+                />
               )}
             </section>
           </>

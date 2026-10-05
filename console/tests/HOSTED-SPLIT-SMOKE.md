@@ -46,6 +46,14 @@ The old `tests/browser-dev-smoke.mjs` and `scripts/read-dev-mail.py` remain
 byte-for-byte upstream imports. Do not repurpose the old same-origin script or
 its legacy proxy SHA headers as split-origin acceptance evidence.
 
+The user TOTP case exercises the separate second-factor login page, an invalid
+code followed by a valid retry, and explicit CLI OAuth approval and denial.
+The authorization page must not request the memory super password; CLI/TUI
+collect it locally after authorization. The case also checks that both failed
+and successful TOTP removal preserve the browser session, and that removal
+remains effective after reload. These checks require a hosted run; offline
+contract checks do not establish that these flows have passed.
+
 ## Required approvals and configuration
 
 Every variable below is explicit. There are no production defaults and no

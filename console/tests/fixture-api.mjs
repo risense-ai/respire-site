@@ -49,6 +49,7 @@ export async function startFixtureApi({ frontend } = {}) {
       revision: 0,
       userTicket: 'fixture-user-ticket',
       adminTicket: 'fixture-admin-ticket',
+      cliDecision: 'pending',
     });
   }
   reset();
@@ -131,6 +132,20 @@ export async function startFixtureApi({ frontend } = {}) {
       if (method === 'GET' && path === '/api/self') return json(200, { user: FIXTURE.user, active: state.blobs.size });
       if (method === 'GET' && path === '/api/self/sessions') return json(200, { sessions: [{ id: 'fixture-session', device_name: 'fixture-browser', created_at: '2026-01-01T00:00:00Z', current: true }] });
       if (method === 'GET' && path === '/api/self/keys') return json(200, { email: state.email, email_verified: state.emailVerified, totp: state.userTotp });
+      if (path === '/api/self/totp/disable' && method === 'POST') {
+        if (body.code !== FIXTURE.totpCode) return json(400, { error: 'fixture invalid second factor' });
+        state.userTotp = false;
+        return json(200, { ok: true });
+      }
+      if (path === '/api/self/cli-authorization/ABCDEF123456') {
+        if (method === 'GET') return json(200, { device_name: 'fixture-terminal', expected_user: FIXTURE.user, expires_in: 600, state: state.cliDecision });
+        assert.equal(method, 'POST');
+        assert.equal(typeof body.approve, 'boolean');
+        assert.equal(state.cliDecision, 'pending');
+        state.cliDecision = body.approve ? 'approved' : 'denied';
+        return json(200, { ok: true });
+      }
+      if (method === 'GET' && /^\/api\/self\/cli-authorization\/[A-Fa-f0-9]{12}$/.test(path)) return json(404, { error: 'fixture authorization code not found' });
       if (path === '/api/self/vault') {
         if (method === 'POST') {
           assert.equal(body.version, 4);
