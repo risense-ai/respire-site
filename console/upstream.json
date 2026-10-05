@@ -37,7 +37,8 @@
     "src/ui.jsx",
     "tests/browser-render.mjs",
     "vite.config.js",
-    "src/Security.jsx"
+    "src/Security.jsx",
+    "src/CliAuthorization.jsx"
   ],
   "not_imported": [
     "dist/index.html",

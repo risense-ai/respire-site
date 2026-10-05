@@ -2,6 +2,17 @@ export const DEFAULT_LOCALE = 'en';
 const STORAGE = 'respire.uiLocale';
 
 const EN = {
+  cliAuthorizeTitle: 'Authorize the CLI',
+  cliAuthorizeEnterCode: 'Enter the code displayed in your CLI',
+  cliAuthorizeDescription: 'Allow this CLI session to access your account. Enter your memory recovery code in the CLI after authorization.',
+  cliAuthorizeInvalid: 'The authorization link is invalid.',
+  cliAuthorizeDevice: 'Device',
+  cliAuthorizeCompare: 'Check that this code matches the code displayed in your CLI.',
+  cliAuthorizeApprove: 'Authorize',
+  cliAuthorizeDeny: 'Deny',
+  cliAuthorizeChangeAccount: 'Use another account',
+  cliAuthorizeDone: 'Authorized. Return to the CLI to finish signing in.',
+  cliAuthorizeDenied: 'Authorization denied. No CLI session was created.',
   language: 'Language',
   checkingLogin: 'Checking sign-in…',
   fallbackHint: 'Admin /admin · user /dashboard',
@@ -524,6 +535,17 @@ const EN = {
 };
 
 const ZH = {
+  cliAuthorizeTitle: '授权 CLI 登录',
+  cliAuthorizeEnterCode: '输入 CLI 显示的验证码',
+  cliAuthorizeDescription: '允许这个 CLI 会话访问你的账户。授权后，请在 CLI 中输入记忆超级密码。',
+  cliAuthorizeInvalid: '授权链接无效。',
+  cliAuthorizeDevice: '设备',
+  cliAuthorizeCompare: '请核对这个验证码与 CLI 显示的验证码一致。',
+  cliAuthorizeApprove: '授权',
+  cliAuthorizeDeny: '拒绝',
+  cliAuthorizeChangeAccount: '使用其他账户',
+  cliAuthorizeDone: '已授权。请返回 CLI 完成登录。',
+  cliAuthorizeDenied: '已拒绝授权，未创建 CLI 会话。',
   language: '语言',
   checkingLogin: '正在确认登录…',
   fallbackHint: '后台 /admin，用户 /dashboard',

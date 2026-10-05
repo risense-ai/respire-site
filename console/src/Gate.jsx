@@ -6,7 +6,7 @@ import { authPayload, generateSecretKey, wrapVaultV4 } from './crypto.js';
 import { api, writeSecret } from './api.js';
 import { t } from './i18n.js';
 
-export function Gate({ admin, onEnter, notify }) {
+export function Gate({ admin, authorization = false, onEnter, notify }) {
   useI18n();
   const [tab, setTab] = useState('login');
   const [step, setStep] = useState(1);
@@ -219,7 +219,7 @@ export function Gate({ admin, onEnter, notify }) {
                     {(tab === 'register' && step === 1) || (tab === 'reset' && step === 2) ? (
                       <label className="field">{t('confirmLoginPassword')}<input type="password" required value={confirm} onChange={(e) => setConfirm(e.target.value)} /></label>
                     ) : null}
-                    {tab === 'login' && !admin ? (
+                    {tab === 'login' && !admin && !authorization ? (
                       <label className="field">{t('superOptional')}<input type="password" value={superpass} onChange={(e) => setSuper(e.target.value)} autoComplete="off" /></label>
                     ) : null}
                     {tab === 'reset' && step === 2 ? <label className="field">{t('emailCode')}<input value={code} required inputMode="numeric" autoComplete="one-time-code" pattern="[0-9]{6}" maxLength={6} onChange={(e) => setCode(e.target.value)} /></label> : null}
