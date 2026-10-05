@@ -37,7 +37,8 @@ export function CliAuthorization({ token, code: linkCode, onLogout }) {
     <header><Brand href={import.meta.env.VITE_HOMEPAGE_URL} /><LangSwitch /></header>
     <section className="gate-form panel" style={{ margin: '48px auto', maxWidth: 560 }}>
       <h2>{t('cliAuthorizeTitle')}</h2>
-      {!valid ? <label className="field">{t('cliAuthorizeEnterCode')}<input autoFocus value={code} maxLength={12} onChange={event => setCode(event.target.value.trim())} autoComplete="off" /></label> : decision ?
+      {!decision && <label className="field">{t('cliAuthorizeEnterCode')}<input autoFocus disabled={busy} value={code} maxLength={12} onChange={event => setCode(event.target.value.trim())} autoComplete="off" /></label>}
+      {!valid ? null : decision ?
         <p role="status">{t(decision === 'approved' ? 'cliAuthorizeDone' : 'cliAuthorizeDenied')}</p> : <>
           <p>{t('cliAuthorizeDescription')}</p>
           {request ? <>

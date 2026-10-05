@@ -145,6 +145,7 @@ export async function startFixtureApi({ frontend } = {}) {
         state.cliDecision = body.approve ? 'approved' : 'denied';
         return json(200, { ok: true });
       }
+      if (method === 'GET' && /^\/api\/self\/cli-authorization\/[A-Fa-f0-9]{12}$/.test(path)) return json(404, { error: 'fixture authorization code not found' });
       if (path === '/api/self/vault') {
         if (method === 'POST') {
           assert.equal(body.version, 4);

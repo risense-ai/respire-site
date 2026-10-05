@@ -406,6 +406,16 @@ try {
     assert.equal(await stored(page, ADMIN_KEY), FIXTURE.adminToken);
   });
 
+  await run('dashboard: CLI authorization lookup errors allow editing without signing out', async () => {
+    const page = await open('/dashboard#/authorize?code=000000000000', bothTokens);
+    await assertAlert(page, 'fixture authorization code not found');
+    await page.getByLabel(t('cliAuthorizeEnterCode'), { exact: true }).fill('ABCDEF123456');
+    await page.getByRole('button', { name: t('cliAuthorizeApprove'), exact: true }).click();
+    await page.getByRole('status').getByText(t('cliAuthorizeDone'), { exact: true }).waitFor();
+    assert.equal(await stored(page, USER_KEY), FIXTURE.userToken);
+    assert.equal(await stored(page, ADMIN_KEY), FIXTURE.adminToken);
+  });
+
   await run('dashboard: registration vault and encrypted save/read/edit/deep link', async () => {
     const start = api.requests.length;
     const page = await open('/dashboard', { [ADMIN_KEY]: FIXTURE.adminToken });
