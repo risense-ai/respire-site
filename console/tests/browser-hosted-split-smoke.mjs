@@ -76,8 +76,9 @@ async function step(name, body) {
   rows.push({ name, status: 'pass' });
   console.log(`PASS ${name}`);
 }
-async function call(path, { method = 'GET', token, body, expected = 200 } = {}) {
-  const response = await context.request.fetch(`${origins.api}${path}`, { method, maxRedirects: 0, timeout: 30000, ...(body === undefined ? {} : { data: body }), headers: token ? { Authorization: `Bearer ${token}` } : {} });
+async function call(path, { method = 'GET', token, body, form, expected = 200 } = {}) {
+  assert.ok(body === undefined || form === undefined, 'A request cannot send JSON and form bodies together');
+  const response = await context.request.fetch(`${origins.api}${path}`, { method, maxRedirects: 0, timeout: 30000, ...(body === undefined ? {} : { data: body }), ...(form === undefined ? {} : { form }), headers: token ? { Authorization: `Bearer ${token}` } : {} });
   assert.equal(response.status(), expected, 'Isolated API returned an unexpected status');
   if (method === 'POST' && path === '/admin/admins' && token === adminToken && [owner, viewer].includes(body?.user)) created.add(body.user);
   return response.json();
@@ -256,7 +257,7 @@ page.setDefaultTimeout(30000);
     await page.getByRole('button', { name: t('startBind'), exact: true }).click();
     await page.locator('.setup-key code').waitFor();
     totpSecret = await page.locator('.setup-key code').textContent();
-    await page.getByLabel(t('verify'), { exact: true }).fill(totp(totpSecret));
+    await page.getByLabel(t('totpCode'), { exact: true }).fill(totp(totpSecret));
     await responseFor('/api/self/totp/confirm', () => page.getByRole('button', { name: t('confirmOn'), exact: true }).click());
     await page.locator('.security-overview h2').getByText(t('totpOnH2'), { exact: true }).waitFor();
     await page.locator('.security-tabs').getByRole('button', { name: t('overview'), exact: true }).click();
@@ -273,11 +274,72 @@ page.setDefaultTimeout(30000);
     const nextChallenge = await call('/login', { method: 'POST', body: { user, pass_hash: auth.pass_hash, device_name: 'hosted-split-smoke-challenge' } });
     const session = await call('/login/totp', { method: 'POST', body: { ticket: nextChallenge.ticket, code: totp(totpSecret), device_name: 'hosted-split-smoke-secondary' } });
     assert.ok(session.token);
-    await page.getByLabel(t('verify'), { exact: true }).fill(totp(totpSecret));
-    await responseFor('/api/self/totp/disable', () => page.locator('.key-actions').getByRole('button', { name: t('close'), exact: true }).click());
+    // Enter OAuth from a signed-out browser so real password and independent
+    // second-factor pages precede an explicit, separately verified decision.
+    const grant = await call('/oauth/device/code', { method: 'POST',
+      form: { client_id: 'respire-cli', device_name: 'hosted-split-smoke-cli', expected_user: user },
+    });
+    assert.match(grant.user_code, /^[A-Fa-f0-9]{12}$/);
+    assert.equal(grant.verification_uri_complete, `${origins.dashboard}/#/authorize?code=${grant.user_code}`);
+    await page.locator('.sidebar-bottom').getByRole('button', { name: t('signOut'), exact: true }).click();
+    await page.goto(grant.verification_uri_complete);
+    await page.getByLabel(t('username'), { exact: true }).fill(user);
+    await page.getByLabel(t('loginPassword'), { exact: true }).fill(password);
+    assert.equal(await page.getByLabel(t('superOptional'), { exact: true }).count(), 0);
+    await responseFor('/login', () => page.locator('.gate-form form').getByRole('button', { name: t('login'), exact: true }).click());
+    const secondFactor = page.getByLabel(t('totpCode'), { exact: true });
+    await secondFactor.waitFor();
+    assert.equal(await page.getByLabel(t('username'), { exact: true }).count(), 0);
+    assert.equal(await page.getByLabel(t('loginPassword'), { exact: true }).count(), 0);
+    await secondFactor.fill(String((Number(totp(totpSecret)) + 1) % 1000000).padStart(6, '0'));
+    const rejected = page.waitForResponse(r => new URL(r.url()).origin === origins.api && new URL(r.url()).pathname === '/login/totp' && r.request().method() === 'POST');
+    await page.locator('.gate-form form').getByRole('button', { name: t('verify'), exact: true }).click();
+    assert.equal((await rejected).status(), 401);
+    await page.getByRole('alert').waitFor();
+    await secondFactor.fill(totp(totpSecret));
+    await responseFor('/login/totp', () => page.locator('.gate-form form').getByRole('button', { name: t('verify'), exact: true }).click());
+    await page.getByText('hosted-split-smoke-cli', { exact: false }).waitFor();
+    userToken = await page.evaluate(() => localStorage.getItem('onememory.userToken'));
+    assert.ok(userToken);
+    assert.equal((await call(`/api/self/cli-authorization/${grant.user_code}`, { token: userToken })).state, 'pending');
+    await responseFor(`/api/self/cli-authorization/${grant.user_code}`, () => page.getByRole('button', { name: t('cliAuthorizeApprove'), exact: true }).click());
+    await page.getByRole('status').getByText(t('cliAuthorizeDone'), { exact: true }).waitFor();
+    const cliSession = await call('/oauth/token', { method: 'POST',
+      form: { client_id: 'respire-cli', grant_type: 'urn:ietf:params:oauth:grant-type:device_code', device_code: grant.device_code },
+    });
+    assert.equal(cliSession.user, user);
+    assert.equal((await call('/api/self', { token: cliSession.access_token })).user, user);
+    assert.equal(await page.evaluate(() => localStorage.getItem('onememory.userToken')), userToken);
+    const denied = await call('/oauth/device/code', { method: 'POST',
+      form: { client_id: 'respire-cli', device_name: 'hosted-split-smoke-denied', expected_user: user },
+    });
+    assert.equal(denied.verification_uri_complete, `${origins.dashboard}/#/authorize?code=${denied.user_code}`);
+    await page.goto(denied.verification_uri_complete);
+    await responseFor(`/api/self/cli-authorization/${denied.user_code}`, () => page.getByRole('button', { name: t('cliAuthorizeDeny'), exact: true }).click());
+    await page.getByRole('status').getByText(t('cliAuthorizeDenied'), { exact: true }).waitFor();
+    const rejection = await call('/oauth/token', { method: 'POST', expected: 400,
+      form: { client_id: 'respire-cli', grant_type: 'urn:ietf:params:oauth:grant-type:device_code', device_code: denied.device_code },
+    });
+    assert.equal(rejection.error, 'access_denied');
+    assert.equal(await page.evaluate(() => localStorage.getItem('onememory.userToken')), userToken);
+    await page.goto(`${origins.dashboard}/#/security`);
+    await page.locator('.security-tabs').getByRole('button', { name: t('twoFactor'), exact: true }).click();
+    const disableCode = page.getByLabel(t('totpCode'), { exact: true });
+    const disable = page.locator('.key-actions').getByRole('button', { name: t('close'), exact: true });
+    await disableCode.fill(String((Number(totp(totpSecret)) + 1) % 1000000).padStart(6, '0'));
+    const failedDisable = page.waitForResponse(r => new URL(r.url()).origin === origins.api && new URL(r.url()).pathname === '/api/self/totp/disable' && r.request().method() === 'POST');
+    await disable.click();
+    assert.equal((await failedDisable).status(), 400);
+    await page.getByRole('alert').waitFor();
+    assert.equal(await page.evaluate(() => localStorage.getItem('onememory.userToken')), userToken);
+    assert.equal((await call('/api/self/keys', { token: userToken })).totp, true);
+    await disableCode.fill(totp(totpSecret));
+    await responseFor('/api/self/totp/disable', () => disable.click());
     assert.equal((await call('/api/self/keys', { token: userToken })).totp, false);
+    assert.equal(await page.evaluate(() => localStorage.getItem('onememory.userToken')), userToken);
     await page.locator('.security-overview h2').getByText(t('totpOffH2'), { exact: true }).waitFor();
     await page.reload();
+    assert.equal(await page.evaluate(() => localStorage.getItem('onememory.userToken')), userToken);
     await page.locator('.settings-panel').getByText(t('totpOff'), { exact: true }).waitFor();
     await page.getByText(t('verified'), { exact: true }).waitFor();
   });
@@ -372,7 +434,7 @@ page.setDefaultTimeout(30000);
     await page.getByRole('button', { name: t('startBind'), exact: true }).click();
     await page.locator('.setup-key code').waitFor();
     const secret = await page.locator('.setup-key code').textContent();
-    await page.getByLabel(t('verify'), { exact: true }).fill(totp(secret));
+    await page.getByLabel(t('totpCode'), { exact: true }).fill(totp(secret));
     await responseFor('/admin/totp/confirm', () => page.getByRole('button', { name: t('confirmOn'), exact: true }).click());
     const auth = await authPayload(owner, ownerPassword);
     const challenge = await call('/admin/login', { method: 'POST', body: { user: owner, pass_hash: auth.pass_hash } });
