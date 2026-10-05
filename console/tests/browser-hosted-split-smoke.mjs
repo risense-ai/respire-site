@@ -299,6 +299,8 @@ page.setDefaultTimeout(30000);
     await secondFactor.fill(totp(totpSecret));
     await responseFor('/login/totp', () => page.locator('.gate-form form').getByRole('button', { name: t('verify'), exact: true }).click());
     await page.getByText('hosted-split-smoke-cli', { exact: false }).waitFor();
+    await page.locator('.gate-form').getByText(`${t('username')}: ${user}`, { exact: true }).waitFor();
+    assert.equal(await page.locator('.setup-key code').textContent(), grant.user_code.toUpperCase());
     userToken = await page.evaluate(() => localStorage.getItem('onememory.userToken'));
     assert.ok(userToken);
     assert.equal((await call(`/api/self/cli-authorization/${grant.user_code}`, { token: userToken })).state, 'pending');

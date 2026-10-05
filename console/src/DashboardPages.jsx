@@ -115,6 +115,10 @@ export function DashboardPages({
   const [vaultInfo, setVaultInfo] = useState(undefined);
   const [viewMode, setViewMode] = useState('tree');
   const [expanded, setExpanded] = useState(() => new Set([ROOT_ID, DIARY_ID]));
+  const list = useMemo(() => (items || []).filter((m) => [m.title, m.content, m.kind, m.project].filter(Boolean).join(' ').toLowerCase().includes(query.toLowerCase())), [items, query]);
+  useEffect(() => {
+    setListPage(current => Math.min(current, Math.max(1, Math.ceil(list.length / PAGE_SIZE))));
+  }, [list.length]);
   // Memoize indexes and search results because TreeBranch depends on index identity.
   // Rebuilding them on every render would reset expanded child rows.
   const treeSource = useMemo(() => {
@@ -355,6 +359,7 @@ export function DashboardPages({
     // Saved recovery codes expire after three days; request manual entry instead of auto-unlocking.
     if (!superFresh()) { setLocked(true); return; }
     unlockMemories(saved, readSecret()).catch((e) => {
+      if (e.name === 'AbortError') return;
       setLocked(true);
       const why = String(e.message || e);
       const hint = e.status === 404
@@ -513,7 +518,6 @@ export function DashboardPages({
   }
 
   if (page === 'memories') {
-    const list = (items || []).filter((m) => [m.title, m.content, m.kind, m.project].filter(Boolean).join(' ').toLowerCase().includes(query.toLowerCase()));
     const mem = (items || []).find((m) => m.id === memoryId);
     if (locked && items === null) {
       return (
@@ -542,7 +546,7 @@ export function DashboardPages({
           {mem ? <Button icon={ArrowLeft} onClick={() => openMemory(null)}>{t('backMemory')}</Button> : (
             <>
               <Button primary icon={Plus} onClick={openNewMemory}>{t('saveMemory')}</Button>
-              <Button icon={ArrowClockwise} onClick={() => unlockMemories(readSuper(), readSecret()).then(() => notify(t('pulled'))).catch((e) => notify(e.message))}>{t('pullLatest')}</Button>
+              <Button icon={ArrowClockwise} onClick={() => syncIncremental().then(() => notify(t('pulled'))).catch((e) => notify(e.message))}>{t('pullLatest')}</Button>
               <Button icon={LockKey} onClick={() => { lockMemories(); openMemory(null); notify(t('locked')); }}>{t('lock')}</Button>
             </>
           )}
