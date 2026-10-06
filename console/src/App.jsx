@@ -1,6 +1,9 @@
 import { useEffect, useState } from 'react';
 import { Gate } from './Gate.jsx';
 import { Shell } from './Shell.jsx';
+import { CliAuthorization } from './CliAuthorization.jsx';
+import { GithubCallback } from './GithubCallback.jsx';
+import { initialGithubCallback } from './githubAuth.js';
 import {
   ADMIN_KEY, USER_KEY, api, onUnauthorized, readToken, writeSecret, writeSuper, writeToken,
 } from './api.js';
@@ -38,6 +41,15 @@ function Console({ admin }) {
   const [token, setTokenState] = useState(() => readToken(key));
   const [hint, setHint] = useState('');
   const [checked, setChecked] = useState(!readToken(key));
+  const [hash, setHash] = useState(window.location.hash);
+  const [github, setGithub] = useState(admin ? null : initialGithubCallback);
+  const authorization = !admin && (hash === '#/authorize' || hash.startsWith('#/authorize?'));
+  const authorizationCode = authorization ? new URLSearchParams(hash.slice('#/authorize?'.length)).get('code') || '' : '';
+  useEffect(() => {
+    const changed = () => setHash(window.location.hash);
+    window.addEventListener('hashchange', changed);
+    return () => window.removeEventListener('hashchange', changed);
+  }, []);
   const setToken = (value, superPass, secretKey) => {
     writeToken(key, value);
     if (superPass) writeSuper(superPass);
@@ -76,6 +88,8 @@ function Console({ admin }) {
         setChecked(true);
       });
   }, [admin, token]);
+  if (github) return <GithubCallback grant={github} token={token} authorization={authorization}
+    onDone={() => setGithub(null)} onEnter={({ token: t, superPass }) => { setToken(t, superPass); setGithub(null); }} />;
   if (!checked) {
     return <div className="gate-page" style={{ padding: 48 }}><p>{t('checkingLogin')}</p></div>;
   }
@@ -84,6 +98,7 @@ function Console({ admin }) {
       <>
         <Gate
           admin={admin}
+          authorization={authorization}
           notify={(t) => { setHint(t); window.setTimeout(() => setHint(''), 3500); }}
           onEnter={({ token: t, superPass, secretKey }) => setToken(t, superPass, secretKey)}
         />
@@ -91,6 +106,7 @@ function Console({ admin }) {
       </>
     );
   }
+  if (authorization) return <CliAuthorization key={`${token}:${authorizationCode}`} token={token} code={authorizationCode} onLogout={() => setToken('')} />;
   return (
     <Shell
       key={token}

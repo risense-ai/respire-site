@@ -246,7 +246,7 @@ try {
     const session = await call('/login/totp', { method: 'POST', body: { ticket: nextChallenge.ticket, code: totp(totpSecret), device_name: 'browser-smoke-secondary' } });
     assert.ok(session.token);
     await page.getByLabel(t('verify'), { exact: true }).fill(totp(totpSecret));
-    await responseFor('/api/self/totp/disable', () => page.locator('.key-actions').getByRole('button', { name: t('close'), exact: true }).click());
+    await responseFor('/api/self/totp/disable', () => page.locator('.key-actions').getByRole('button', { name: t('unbindTotp'), exact: true }).click());
     assert.equal((await call('/api/self/keys', { token: userToken })).totp, false);
     await page.locator('.security-overview h2').getByText(t('totpOffH2'), { exact: true }).waitFor();
     await page.reload();

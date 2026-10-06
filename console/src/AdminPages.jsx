@@ -69,9 +69,10 @@ function StatsChart({ series }) {
     };
     const plot = new uPlot(opts, data, wrap);
     const onResize = () => plot.setSize({ width: wrap.clientWidth, height: 330 });
-    window.addEventListener('resize', onResize);
+    const observer = new ResizeObserver(onResize);
+    observer.observe(wrap);
     return () => {
-      window.removeEventListener('resize', onResize);
+      observer.disconnect();
       plot.destroy();
     };
   }, [series]);
@@ -91,19 +92,23 @@ function StatsPage({ token }) {
   const [days, setDays] = useState(30);
   const [series, setSeries] = useState(null);
   const [error, setError] = useState('');
+  const [trackingSince, setTrackingSince] = useState('');
+  const [reload, setReload] = useState(0);
 
   useEffect(() => {
     let alive = true;
     setSeries(null);
     setError('');
     api(`/admin/stats?days=${days}`, { token })
-      .then((r) => { if (alive) setSeries(r.series || []); })
+      .then((r) => {
+        if (alive) { setSeries(r.series); setTrackingSince(r.memory_tracking_since); }
+      })
       .catch((e) => {
         if (!alive) return;
         setError(e.status === 403 ? t('statsForbidden') : (e.message ? `${t('statsLoadFailed')} ${e.message}` : t('statsLoadFailed')));
       });
     return () => { alive = false; };
-  }, [days, token]);
+  }, [days, token, reload]);
 
   return (
     <>
@@ -116,13 +121,14 @@ function StatsPage({ token }) {
       </Heading>
       <section className="panel stats-panel">
         {error ? (
-          <div className="stats-error"><WarningCircle size={30} /><p>{error}</p></div>
+          <div className="stats-error" role="alert"><WarningCircle size={30} /><p>{error}</p><Button onClick={() => setReload((n) => n + 1)}>{t('statsRetry')}</Button></div>
         ) : series ? (
           <StatsChart series={series} />
         ) : (
           <div className="stats-loading">{t('statsLoading')}</div>
         )}
       </section>
+      {series && <Note>{t('statsHistory', { date: trackingSince })}</Note>}
     </>
   );
 }

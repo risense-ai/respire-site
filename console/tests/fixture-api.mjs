@@ -40,6 +40,7 @@ export async function startFixtureApi({ frontend } = {}) {
       failures: new Map(),
       userTotp: false,
       adminTotp: false,
+      adminRole: 'owner',
       registered: false,
       email: '',
       emailVerified: false,
@@ -49,6 +50,9 @@ export async function startFixtureApi({ frontend } = {}) {
       revision: 0,
       userTicket: 'fixture-user-ticket',
       adminTicket: 'fixture-admin-ticket',
+      cliDecision: 'pending',
+      github: { bound: false },
+      githubState: 'a'.repeat(64),
     });
   }
   reset();
@@ -96,6 +100,17 @@ export async function startFixtureApi({ frontend } = {}) {
         if (failure.raw !== undefined) return response.writeHead(failure.status, { 'Content-Type': 'text/plain' }).end(failure.raw);
         return json(failure.status, { error: failure.error });
       }
+      if (method === 'POST' && path === '/oauth/github/start') {
+        assert.equal(request.headers.authorization, undefined);
+        return json(200, { state: state.githubState, expires_in: 600,
+          authorization_uri: `${origin}/dashboard?code=fixture-github-code&state=${state.githubState}` });
+      }
+      if (method === 'POST' && path === '/oauth/github/exchange') {
+        assert.equal(request.headers.authorization, undefined);
+        assert.deepEqual(body, { state: state.githubState, code: 'fixture-github-code' });
+        if (state.userTotp) return json(200, { user: FIXTURE.user, totp_required: true, ticket: state.userTicket });
+        return json(200, { user: FIXTURE.user, token: FIXTURE.userToken });
+      }
       if (method === 'POST' && ['/login', '/admin/login'].includes(path)) {
         const admin = path.startsWith('/admin');
         const auth = admin ? adminAuth : userAuth;
@@ -131,6 +146,32 @@ export async function startFixtureApi({ frontend } = {}) {
       if (method === 'GET' && path === '/api/self') return json(200, { user: FIXTURE.user, active: state.blobs.size });
       if (method === 'GET' && path === '/api/self/sessions') return json(200, { sessions: [{ id: 'fixture-session', device_name: 'fixture-browser', created_at: '2026-01-01T00:00:00Z', current: true }] });
       if (method === 'GET' && path === '/api/self/keys') return json(200, { email: state.email, email_verified: state.emailVerified, totp: state.userTotp });
+      if (method === 'GET' && path === '/api/self/github') return json(200, state.github);
+      if (method === 'POST' && path === '/api/self/github/start') return json(200, { state: state.githubState, expires_in: 600,
+        authorization_uri: `${origin}/dashboard?code=fixture-github-code&state=${state.githubState}` });
+      if (method === 'POST' && path === '/api/self/github/exchange') {
+        assert.deepEqual(body, { state: state.githubState, code: 'fixture-github-code' });
+        state.github = { bound: true, id: 42, login: 'fixture-github' };
+        return json(200, state.github);
+      }
+      if (method === 'POST' && path === '/api/self/github/unbind') {
+        state.github = { bound: false };
+        return json(200, state.github);
+      }
+      if (path === '/api/self/totp/disable' && method === 'POST') {
+        if (body.code !== FIXTURE.totpCode) return json(400, { error: 'fixture invalid second factor' });
+        state.userTotp = false;
+        return json(200, { ok: true });
+      }
+      if (path === '/api/self/cli-authorization/ABCDEF123456') {
+        if (method === 'GET') return json(200, { device_name: 'fixture-terminal', expected_user: FIXTURE.user, expires_in: 600, state: state.cliDecision });
+        assert.equal(method, 'POST');
+        assert.equal(typeof body.approve, 'boolean');
+        assert.equal(state.cliDecision, 'pending');
+        state.cliDecision = body.approve ? 'approved' : 'denied';
+        return json(200, { ok: true });
+      }
+      if (method === 'GET' && /^\/api\/self\/cli-authorization\/[A-Fa-f0-9]{12}$/.test(path)) return json(404, { error: 'fixture authorization code not found' });
       if (path === '/api/self/vault') {
         if (method === 'POST') {
           assert.equal(body.version, 4);
@@ -141,6 +182,12 @@ export async function startFixtureApi({ frontend } = {}) {
           return json(200, { ok: true });
         }
         if (method === 'GET') return state.vault ? json(200, state.vault) : json(404, { error: 'fixture vault not initialized' });
+      }
+      if (method === 'POST' && path === '/api/self/github/vault') {
+        if (state.vault || state.blobs.size) return json(409, { error: 'existing vault or memories must be preserved' });
+        assert.equal(body.version, 4);
+        state.vault = body;
+        return json(200, { ok: true });
       }
       if (method === 'GET' && path === '/pull') {
         const since = Number(url.searchParams.get('since') || 0);
@@ -178,7 +225,18 @@ export async function startFixtureApi({ frontend } = {}) {
         state.emailVerified = true;
         return json(200, { ok: true });
       }
-      if (method === 'GET' && path === '/admin/me') return json(200, { user: FIXTURE.admin, role: 'owner', kind: 'super_admin', totp: state.adminTotp });
+      if (method === 'GET' && path === '/admin/me') return json(200, { user: FIXTURE.admin, role: state.adminRole, kind: 'super_admin', totp: state.adminTotp });
+      if (method === 'GET' && path === '/admin/stats') {
+        if (state.adminRole === 'viewer') return json(403, { error: 'forbidden' });
+        const days = Number(url.searchParams.get('days') || 30);
+        assert.ok(Number.isInteger(days) && days >= 7 && days <= 90);
+        const today = Date.UTC(2026, 9, 6);
+        const series = Array.from({ length: days }, (_, i) => {
+          const date = new Date(today - (days - i - 1) * 86400000).toISOString().slice(0, 10);
+          return { date, registrations: i % 3, memories: date < '2026-10-05' ? null : 2, sessions: i % 4 };
+        });
+        return json(200, { days, timezone: 'Asia/Shanghai', memory_tracking_since: '2026-10-05', historical_baseline: 'retained_registrations_and_sessions', series });
+      }
       if (method === 'GET' && path === '/admin/users') return json(200, { users: [{ user: FIXTURE.user, active: 0, session_count: 1, created_at: '2026-01-01T00:00:00Z' }], total: 1, page: 1, summary: { all: 1, ok: 1, banned: 0, deleted: 0, sessions: 1, ciphertext: 0 } });
       if (method === 'GET' && path === '/admin/admins') return json(200, { admins: [] });
       if (method === 'GET' && ['/admin/outbox', '/admin/audit'].includes(path)) return json(200, { items: [] });
