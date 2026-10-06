@@ -228,8 +228,11 @@ export async function startFixtureApi({ frontend } = {}) {
       if (method === 'GET' && path === '/admin/me') return json(200, { user: FIXTURE.admin, role: state.adminRole, kind: 'super_admin', totp: state.adminTotp });
       if (method === 'GET' && path === '/admin/stats') {
         if (state.adminRole === 'viewer') return json(403, { error: 'forbidden' });
-        const days = Number(url.searchParams.get('days') || 30);
-        assert.ok(Number.isInteger(days) && days >= 7 && days <= 90);
+        const rawDays = url.searchParams.get('days');
+        const days = rawDays === null ? 30 : Number(rawDays);
+        if ((rawDays !== null && !/^\+?\d+$/.test(rawDays.trim())) || !Number.isInteger(days) || days < 7 || days > 90) {
+          return json(400, { error: 'days must be an integer between 7 and 90' });
+        }
         const today = Date.UTC(2026, 9, 6);
         const series = Array.from({ length: days }, (_, i) => {
           const date = new Date(today - (days - i - 1) * 86400000).toISOString().slice(0, 10);
