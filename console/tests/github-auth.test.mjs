@@ -17,7 +17,7 @@ test('GitHub callback preserves CLI approval route and consumes browser state on
 });
 
 test('uninitiated, mismatched and expired callbacks cannot log in or bind', () => {
-  for (const pending of [null, { state: 'other', expires: Date.now() + 60000 }, { state: 'state', expires: 0 }]) {
+  for (const pending of [null, { state: 'other', expires: Date.now() + 60000 }, { state: 'state', expires: 0 }, { state: 'state' }]) {
     const { location, storage } = browser(pending, '?code=code&state=state');
     const reply = githubCallback(location, storage);
     assert.match(reply.error, /does not match/);

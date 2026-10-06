@@ -424,12 +424,12 @@ try {
     assert.match(recovery, /^A3-/);
     assert.equal(await stored(page, USER_KEY), null);
     assert.equal(await page.getByRole('button', { name: t('continue'), exact: true }).isEnabled(), false);
-    const vault = JSON.stringify(api.state.vault);
+    assert.equal(api.state.vault, null, 'Do not upload a vault before the recovery code was confirmed saved');
     await page.getByLabel(t('confirmSavedSuper'), { exact: true }).check();
     await page.getByRole('button', { name: t('continue'), exact: true }).click();
     await page.locator('.console-main').waitFor();
     assert.equal(await stored(page, USER_KEY), FIXTURE.userToken);
-    assert.equal(JSON.stringify(api.state.vault), vault);
+    assert.equal(api.state.vault.version, 4);
     assert.equal((await unwrapUrk(recovery, undefined, api.state.vault)).length, 32);
     assert.ok(api.requests.every(r => !JSON.stringify(r.body || {}).includes(recovery)), 'Recovery code must stay local');
   });

@@ -17,7 +17,7 @@ export function githubCallback(location = window.location, storage = sessionStor
   let pending;
   try { pending = JSON.parse(storage.getItem(STORAGE)); } catch { /* invalid local grant */ }
   storage.removeItem(STORAGE);
-  if (!pending || pending.state !== query.get('state') || pending.expires <= Date.now()) {
+  if (!pending || pending.state !== query.get('state') || !Number.isFinite(pending.expires) || pending.expires <= Date.now()) {
     return { error: 'GitHub authorization does not match this browser. Please start again.' };
   }
   if (query.has('error')) return { error: 'GitHub authorization was cancelled.', hash: pending.hash };

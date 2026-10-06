@@ -55,11 +55,11 @@ export function GithubCallback({ grant, token, authorization, onEnter, onDone })
         setCode('');
       } else if (issued) {
         if (!saved) throw new Error(t('confirmSuperFirst'));
+        await api('/api/self/github/vault', { method: 'POST', token: reply.token, body: vault });
         onEnter({ token: reply.token, superPass: issued });
       } else if (vault === null) {
         const recovery = generateSecretKey();
         const initialVault = await wrapVaultV4(recovery);
-        await api('/api/self/github/vault', { method: 'POST', token: reply.token, body: initialVault });
         setVault(initialVault); setIssued(recovery);
       } else {
         await unwrapUrk(superpass, undefined, vault);
