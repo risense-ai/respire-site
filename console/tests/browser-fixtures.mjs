@@ -367,7 +367,11 @@ try {
     await page.locator('.security-overview h2').getByText(t('totpOnH2'), { exact: true }).waitFor();
     await page.locator('.security-tabs').getByRole('button', { name: t('twoFactor'), exact: true }).click();
     const code = page.getByLabel(t('totpCode'), { exact: true });
-    const disable = page.locator('.key-actions').getByRole('button', { name: t('close'), exact: true });
+    await page.getByRole('heading', { name: t('totpBoundTitle'), exact: true }).waitFor();
+    assert.equal(await page.getByRole('button', { name: t('startBind'), exact: true }).count(), 0);
+    assert.equal(await page.getByRole('button', { name: t('confirmOn'), exact: true }).count(), 0);
+    const disable = page.locator('.key-actions').getByRole('button', { name: t('unbindTotp'), exact: true });
+    assert.equal(await disable.isEnabled(), false);
     await code.fill('000000');
     await waitForApi(page, '/api/self/totp/disable', 'POST', () => disable.click(), 400);
     await assertAlert(page, 'fixture invalid second factor');
@@ -378,6 +382,9 @@ try {
     await page.locator('.security-overview h2').getByText(t('totpOffH2'), { exact: true }).waitFor();
     assert.equal(await stored(page, USER_KEY), FIXTURE.userToken);
     assert.equal(await stored(page, ADMIN_KEY), FIXTURE.adminToken);
+    await page.getByRole('button', { name: t('startBind'), exact: true }).waitFor();
+    assert.equal(await page.getByRole('button', { name: t('unbindTotp'), exact: true }).count(), 0);
+    assert.equal(await page.getByLabel(t('totpCode'), { exact: true }).count(), 0);
     await page.reload();
     await page.locator('.security-overview h2').getByText(t('totpOffH2'), { exact: true }).waitFor();
   });
