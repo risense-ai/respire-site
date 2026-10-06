@@ -6,6 +6,26 @@ Cloud browser transport: public `VITE_API_BASE_URL`, GET/POST, JSON bodies, opti
 
 ## Public authentication
 
+GitHub uses `POST /oauth/github/start` and `/exchange` with a ten-minute,
+single-use PKCE grant. The API owns provider credentials and an exact dashboard
+root callback; the browser keeps only state, expiry and the original hash route
+in session storage. It compares state before exchange, removes code/state from
+the URL and preserves `#/authorize?code=...` for CLI/TUI approval. Provider tokens
+never enter this bundle, browser storage or frontend responses.
+
+Bindings are keyed by GitHub numeric ID, never email/login. Existing accounts
+still enter a separate TOTP page when required, then validate the recovery code
+locally before committing dashboard login. CLI/TUI ask for it in the terminal
+after explicit approval. New/uninitialized GitHub accounts generate a recovery
+code locally, initialize `/api/self/github/vault` without overwriting any vault
+or memories, and require confirmation that the code was saved before entering.
+
+Security reads `GET /api/self/github`; authenticated `/start` and `/exchange`
+link an unbound identity to the current owner. `/unbind` preserves the current
+session and vault, returning 409 when no login password exists. The UI displays
+that business error without logging out. Production rollout follows DEV user
+acceptance; OAuth applications alone do not prove a deployed login flow.
+
 - POST `/register`: derived user/pass hash/salt and device name; returns user token, followed by encrypted vault setup
 - POST `/login`, `/login/totp`: password-derived auth or ticket/code challenge, user token only after challenge completion
 - POST `/forgot`, `/reset`: existing email recovery flow

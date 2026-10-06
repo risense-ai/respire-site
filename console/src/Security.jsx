@@ -1,9 +1,10 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { ShieldCheck, LockKey, Envelope, Shield, Trash } from '@phosphor-icons/react';
 import { Button, Badge, Heading, Note, openPurgeConfirm, useI18n } from './ui.jsx';
 import { authPayload } from './crypto.js';
 import { api } from './api.js';
 import { t } from './i18n.js';
+import { beginGithub } from './githubAuth.js';
 
 export function Security({ admin, token, me, notify, onReload, open, onLogout }) {
   useI18n();
@@ -19,6 +20,15 @@ export function Security({ admin, token, me, notify, onReload, open, onLogout })
   const [totpCode, setTotpCode] = useState('');
   const [totpBusy, setTotpBusy] = useState(false);
   const totp = !!me?.totp;
+  const [github, setGithub] = useState(null);
+  const [githubBusy, setGithubBusy] = useState(false);
+  useEffect(() => {
+    if (admin) return;
+    let active = true;
+    api('/api/self/github', { token }).then(reply => { if (active) setGithub(reply); })
+      .catch(err => { if (active) setError(err.message); });
+    return () => { active = false; };
+  }, [admin, token]);
 
   const passPath = admin ? '/admin/password' : '/api/self/password';
   const totpBegin = admin ? '/admin/totp/begin' : '/api/self/totp/begin';
@@ -47,6 +57,22 @@ export function Security({ admin, token, me, notify, onReload, open, onLogout })
       </div>
       {tab === 'overview' ? (
         <section className="panel settings-panel">
+          {!admin && <div className="setting-row">
+            <ShieldCheck size={25} />
+            <div><h3>GitHub <Badge>{github?.bound ? t('githubBound') : t('unbound')}</Badge></h3><p>{github?.login || t('githubDescription')}</p></div>
+            <Button disabled={githubBusy || !github} onClick={async () => {
+              setGithubBusy(true); setError('');
+              try {
+                if (github.bound) {
+                  await api('/api/self/github/unbind', { method: 'POST', token });
+                  setGithub(await api('/api/self/github', { token }));
+                  notify(t('githubUnlinked'));
+                } else await beginGithub(token);
+              } catch (err) { setError(err.message); }
+              finally { setGithubBusy(false); }
+            }}>{github?.bound ? t('githubUnbind') : t('githubBind')}</Button>
+          </div>}
+          {error && <p className="form-error" role="alert">{error}</p>}
           <div className="setting-row">
             <LockKey size={25} />
             <div><h3>{t('loginPassH3')}</h3><p>{t('loginPassP')}</p></div>

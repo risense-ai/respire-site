@@ -2,6 +2,12 @@ export const DEFAULT_LOCALE = 'en';
 const STORAGE = 'respire.uiLocale';
 
 const EN = {
+  githubContinue: 'Continue with GitHub',
+  githubDescription: 'Use GitHub to sign in. Your memory recovery code stays separate.',
+  githubBound: 'Linked',
+  githubBind: 'Link GitHub',
+  githubUnbind: 'Unlink GitHub',
+  githubUnlinked: 'GitHub unlinked. You are still signed in.',
   cliAuthorizeTitle: 'Authorize the CLI',
   cliAuthorizeEnterCode: 'Enter the code displayed in your CLI',
   cliAuthorizeDescription: 'Allow this CLI session to access your account. Enter your memory recovery code in the CLI after authorization.',
@@ -535,6 +541,12 @@ const EN = {
 };
 
 const ZH = {
+  githubContinue: '使用 GitHub 继续',
+  githubDescription: '使用 GitHub 登录，超级密码仍由你自己保管。',
+  githubBound: '已绑定',
+  githubBind: '绑定 GitHub',
+  githubUnbind: '解除 GitHub 绑定',
+  githubUnlinked: '已解除 GitHub 绑定，当前登录保持有效。',
   cliAuthorizeTitle: '授权 CLI 登录',
   cliAuthorizeEnterCode: '输入 CLI 显示的验证码',
   cliAuthorizeDescription: '允许这个 CLI 会话访问你的账户。授权后，请在 CLI 中输入记忆超级密码。',

@@ -7,7 +7,7 @@ import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { promisify } from 'node:util';
 import { chromium } from 'playwright';
-import { decryptItem, deriveDataKey, unwrapUrk } from '../src/crypto.js';
+import { decryptItem, deriveDataKey, unwrapUrk, generateSecretKey, wrapVaultV4 } from '../src/crypto.js';
 import { t } from '../src/i18n.js';
 import { FIXTURE, startFixtureApi, closeServer, listen } from './fixture-api.mjs';
 import { startFixtureProxy } from './fixture-proxy.mjs';
@@ -395,6 +395,79 @@ try {
     await page.getByRole('status').getByText(t('cliAuthorizeDone'), { exact: true }).waitFor();
     assert.equal(api.state.cliDecision, 'approved');
     assert.equal(await stored(page, USER_KEY), FIXTURE.userToken);
+  });
+
+  await run('dashboard: GitHub login requires recovery code and preserves the existing vault', async () => {
+    const recovery = generateSecretKey();
+    api.state.vault = await wrapVaultV4(recovery);
+    const original = JSON.stringify(api.state.vault);
+    const page = await open('/dashboard');
+    await page.getByRole('button', { name: t('githubContinue'), exact: true }).click();
+    await page.getByLabel(t('superPassword'), { exact: true }).fill('wrong-recovery-code');
+    await page.getByRole('button', { name: t('continue'), exact: true }).click();
+    await page.getByRole('alert').waitFor();
+    assert.equal(await stored(page, USER_KEY), null);
+    await page.getByLabel(t('superPassword'), { exact: true }).fill(recovery);
+    await page.getByRole('button', { name: t('continue'), exact: true }).click();
+    await page.locator('.console-main').waitFor();
+    assert.equal(await stored(page, USER_KEY), FIXTURE.userToken);
+    assert.equal(JSON.stringify(api.state.vault), original);
+    assert.equal(new URL(page.url()).search, '');
+    assert.equal(api.requests.filter(r => r.method === 'POST' && r.path === '/oauth/github/exchange').length, 1);
+  });
+
+  await run('dashboard: new GitHub account confirms its locally generated recovery code before login', async () => {
+    const page = await open('/dashboard');
+    await page.getByRole('button', { name: t('githubContinue'), exact: true }).click();
+    await page.getByRole('button', { name: t('generateSuper'), exact: true }).click();
+    const recovery = await page.locator('.demo-key code').innerText();
+    assert.match(recovery, /^A3-/);
+    assert.equal(await stored(page, USER_KEY), null);
+    assert.equal(await page.getByRole('button', { name: t('continue'), exact: true }).isEnabled(), false);
+    const vault = JSON.stringify(api.state.vault);
+    await page.getByLabel(t('confirmSavedSuper'), { exact: true }).check();
+    await page.getByRole('button', { name: t('continue'), exact: true }).click();
+    await page.locator('.console-main').waitFor();
+    assert.equal(await stored(page, USER_KEY), FIXTURE.userToken);
+    assert.equal(JSON.stringify(api.state.vault), vault);
+    assert.equal((await unwrapUrk(recovery, undefined, api.state.vault)).length, 32);
+    assert.ok(api.requests.every(r => !JSON.stringify(r.body || {}).includes(recovery)), 'Recovery code must stay local');
+  });
+
+  await run('dashboard: GitHub TOTP keeps the CLI authorization code through the redirect', async () => {
+    api.state.userTotp = true;
+    api.state.vault = await wrapVaultV4(generateSecretKey());
+    const page = await open('/dashboard#/authorize?code=ABCDEF123456');
+    await page.getByRole('button', { name: t('githubContinue'), exact: true }).click();
+    await page.getByLabel(t('totpCode'), { exact: true }).fill('000000');
+    await page.getByRole('button', { name: t('verify'), exact: true }).click();
+    await assertAlert(page, 'fixture invalid second factor');
+    assert.equal(await stored(page, USER_KEY), null);
+    await page.getByLabel(t('totpCode'), { exact: true }).fill(FIXTURE.totpCode);
+    await page.getByRole('button', { name: t('verify'), exact: true }).click();
+    await page.getByText('fixture-terminal', { exact: false }).waitFor();
+    assert.equal(api.state.cliDecision, 'pending');
+    await page.getByRole('button', { name: t('cliAuthorizeApprove'), exact: true }).click();
+    await page.getByRole('status').getByText(t('cliAuthorizeDone'), { exact: true }).waitFor();
+    assert.equal(api.state.cliDecision, 'approved');
+  });
+
+  await run('dashboard: GitHub binding and unlinking retain the current session', async () => {
+    const page = await open('/dashboard#/security', bothTokens);
+    await page.getByRole('button', { name: t('githubBind'), exact: true }).click();
+    await page.getByText('fixture-github', { exact: true }).waitFor();
+    assert.equal(await stored(page, USER_KEY), FIXTURE.userToken);
+    api.state.failures.set('POST /api/self/github/unbind', { status: 409, error: 'set a login password first' });
+    await page.getByRole('button', { name: t('githubUnbind'), exact: true }).click();
+    await assertAlert(page, 'set a login password first');
+    assert.equal(await stored(page, USER_KEY), FIXTURE.userToken);
+    api.state.failures.delete('POST /api/self/github/unbind');
+    await page.getByRole('button', { name: t('githubUnbind'), exact: true }).click();
+    await page.getByRole('button', { name: t('githubBind'), exact: true }).waitFor();
+    assert.equal(await stored(page, USER_KEY), FIXTURE.userToken);
+    assert.equal(await stored(page, ADMIN_KEY), FIXTURE.adminToken);
+    await page.reload();
+    await page.getByRole('button', { name: t('githubBind'), exact: true }).waitFor();
   });
 
   await run('dashboard: CLI authorization can be denied without signing out', async () => {

@@ -2,6 +2,8 @@ import { useEffect, useState } from 'react';
 import { Gate } from './Gate.jsx';
 import { Shell } from './Shell.jsx';
 import { CliAuthorization } from './CliAuthorization.jsx';
+import { GithubCallback } from './GithubCallback.jsx';
+import { initialGithubCallback } from './githubAuth.js';
 import {
   ADMIN_KEY, USER_KEY, api, onUnauthorized, readToken, writeSecret, writeSuper, writeToken,
 } from './api.js';
@@ -40,6 +42,7 @@ function Console({ admin }) {
   const [hint, setHint] = useState('');
   const [checked, setChecked] = useState(!readToken(key));
   const [hash, setHash] = useState(window.location.hash);
+  const [github, setGithub] = useState(admin ? null : initialGithubCallback);
   const authorization = !admin && (hash === '#/authorize' || hash.startsWith('#/authorize?'));
   const authorizationCode = authorization ? new URLSearchParams(hash.slice('#/authorize?'.length)).get('code') || '' : '';
   useEffect(() => {
@@ -85,6 +88,8 @@ function Console({ admin }) {
         setChecked(true);
       });
   }, [admin, token]);
+  if (github) return <GithubCallback grant={github} token={token} authorization={authorization}
+    onDone={() => setGithub(null)} onEnter={({ token: t, superPass }) => { setToken(t, superPass); setGithub(null); }} />;
   if (!checked) {
     return <div className="gate-page" style={{ padding: 48 }}><p>{t('checkingLogin')}</p></div>;
   }
