@@ -88,7 +88,7 @@ export function Security({ admin, token, me, notify, onReload, open, onLogout })
           <div className="setting-row">
             <Shield size={25} />
             <div><h3>{t('totpH3')} <Badge tone={totp ? 'green' : 'neutral'}>{totp ? t('totpOn') : t('totpOff')}</Badge></h3><p>{t('totpP')}</p></div>
-            <Button onClick={() => setTab('totp')}>{t('manage')}</Button>
+            <Button onClick={() => setTab('totp')}>{totp ? t('unbindTotp') : t('startBind')}</Button>
           </div>
         </section>
       ) : tab === 'pass' ? (
@@ -158,10 +158,10 @@ export function Security({ admin, token, me, notify, onReload, open, onLogout })
       ) : (
         <section className="panel form-panel">
           <div className="feature-mark"><ShieldCheck size={30} /></div>
-          <h2>{t('totpTitle')}</h2>
-          <p>{t('totpApps')}</p>
-          <div className="row" style={{ gap: 8, marginBottom: 16 }}>
-            <Button disabled={totp || totpBusy} onClick={async () => {
+          <h2>{totp ? t('totpBoundTitle') : t('totpTitle')}</h2>
+          <p>{totp ? t('totpUnbindHelp') : t('totpApps')}</p>
+          {!totp && <div className="row" style={{ gap: 8, marginBottom: 16 }}>
+            <Button disabled={totpBusy} onClick={async () => {
               if (totpBusy) return;
               setTotpBusy(true); setError('');
               try {
@@ -171,13 +171,13 @@ export function Security({ admin, token, me, notify, onReload, open, onLogout })
               } catch (err) { setError(err.message); }
               finally { setTotpBusy(false); }
             }}>{t('startBind')}</Button>
-          </div>
+          </div>}
           {totpSecret ? <div className="setup-key"><code>{totpSecret}</code></div> : null}
           <Badge tone={totp ? 'green' : 'neutral'}>{totp ? t('totpOn') : t('totpOff')}</Badge>
-          <label className="field">{t('totpCode')}<input disabled={totpBusy} inputMode="numeric" autoComplete="one-time-code" maxLength={6} value={totpCode} onChange={(e) => setTotpCode(e.target.value)} /></label>
+          {(totp || totpSecret) && <label className="field">{t('totpCode')}<input disabled={totpBusy} inputMode="numeric" autoComplete="one-time-code" maxLength={6} value={totpCode} onChange={(e) => setTotpCode(e.target.value)} /></label>}
           {error && <p className="form-error" role="alert">{error}</p>}
           <div className="key-actions">
-            <Button primary disabled={totp || !totpSecret || !/^[0-9]{6}$/.test(totpCode) || totpBusy} onClick={async () => {
+            {!totp && totpSecret && <Button primary disabled={!/^[0-9]{6}$/.test(totpCode) || totpBusy} onClick={async () => {
               if (totpBusy) return;
               setTotpBusy(true); setError('');
               try {
@@ -189,8 +189,8 @@ export function Security({ admin, token, me, notify, onReload, open, onLogout })
                 setTotpCode('');
               } catch (err) { setError(err.message); }
               finally { setTotpBusy(false); }
-            }}>{t('confirmOn')}</Button>
-            <Button danger disabled={!totp || !/^[0-9]{6}$/.test(totpCode) || totpBusy} onClick={async () => {
+            }}>{t('confirmOn')}</Button>}
+            {totp && <Button danger disabled={!/^[0-9]{6}$/.test(totpCode) || totpBusy} onClick={async () => {
               if (totpBusy) return;
               setTotpBusy(true); setError('');
               try {
@@ -202,7 +202,7 @@ export function Security({ admin, token, me, notify, onReload, open, onLogout })
                 setTotpCode('');
               } catch (err) { setError(err.message); }
               finally { setTotpBusy(false); }
-            }}>{t('close')}</Button>
+            }}>{t('unbindTotp')}</Button>}
           </div>
         </section>
       )}
