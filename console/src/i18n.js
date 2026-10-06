@@ -3,6 +3,7 @@ const STORAGE = 'respire.uiLocale';
 
 const EN = {
   githubContinue: 'Continue with GitHub',
+  githubUnlockFailed: 'The super password could not unlock this account. Check the recovery code and try again.',
   githubDescription: 'Use GitHub to sign in. Your memory recovery code stays separate.',
   githubBound: 'Linked',
   githubBind: 'Link GitHub',
@@ -542,6 +543,7 @@ const EN = {
 
 const ZH = {
   githubContinue: '使用 GitHub 继续',
+  githubUnlockFailed: '超级密码无法解锁此账户，请检查恢复码后重试。',
   githubDescription: '使用 GitHub 登录，超级密码仍由你自己保管。',
   githubBound: '已绑定',
   githubBind: '绑定 GitHub',

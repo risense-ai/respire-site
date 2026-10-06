@@ -407,6 +407,11 @@ try {
     await page.getByRole('button', { name: t('continue'), exact: true }).click();
     await page.getByRole('alert').waitFor();
     assert.equal(await stored(page, USER_KEY), null);
+    await page.getByLabel(t('superPassword'), { exact: true }).fill(generateSecretKey());
+    await page.getByRole('button', { name: t('continue'), exact: true }).click();
+    await assertAlert(page, t('githubUnlockFailed'));
+    assert.equal(await stored(page, USER_KEY), null);
+    assert.equal(JSON.stringify(api.state.vault), original);
     await page.getByLabel(t('superPassword'), { exact: true }).fill(recovery);
     await page.getByRole('button', { name: t('continue'), exact: true }).click();
     await page.locator('.console-main').waitFor();

@@ -65,7 +65,7 @@ export function GithubCallback({ grant, token, authorization, onEnter, onDone })
         await unwrapUrk(superpass, undefined, vault);
         onEnter({ token: reply.token, superPass: superpass });
       }
-    } catch (err) { setError(err.message); }
+    } catch (err) { setError(err.name === 'OperationError' ? t('githubUnlockFailed') : err.message); }
     finally { setBusy(false); }
   }
 
