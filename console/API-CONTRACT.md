@@ -45,6 +45,10 @@ acceptance; OAuth applications alone do not prove a deployed login flow.
 ## Administrator bearer and existing role checks
 
 - GET `/admin/me`, `/admin/admins`, `/admin/outbox`, `/admin/audit` (page query)
+- GET `/admin/stats?days=N`: daily operations time series, requires owner/admin role (viewer receives 403; unauthenticated 401)
+  - Request: optional `days` query parameter, default 30, valid range 7–90; out-of-range or non-numeric values return 400 with `{"error":"days must be an integer between 7 and 90"}`
+  - Response 200: `{"days": N, "timezone":"Asia/Shanghai", "memory_tracking_since":"YYYY-MM-DD", "historical_baseline":"retained_registrations_and_sessions", "series": [{"date": "YYYY-MM-DD", "registrations": n, "memories": n, "sessions": n}, …]}` — ascending, zero-filled known days, Shanghai day boundaries. Anonymous insert totals survive edits, logout and deletion. Memories count first live blob receipt using server time; client `updated_at` never determines creation date. Before tracking started, `memories` is `null` (unknown) and shown as a chart gap. Historical registrations/sessions cover records retained at schema-7 upgrade; purged older events cannot be reconstructed.
+  - Errors: `400` out-of-range `days`, `401` missing/rejected token, `403` viewer role, `503` database unavailable
 - GET `/admin/users` (`q`, `page`, `limit`, `status`, optional `export`)
 - GET `/admin/users/{user}/sessions`
 - POST `/admin/users`, `/admin/admins`, `/admin/admins/{user}/revoke`

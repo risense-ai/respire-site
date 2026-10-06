@@ -278,6 +278,43 @@ try {
     await page.locator('.console-main.surface-security').waitFor();
   });
 
+  await run('admin: daily stats ranges, missing history, timezone and responsive chart', async () => {
+    const page = await open('/admin#/stats', bothTokens);
+    await page.locator('.stats-panel .uplot').waitFor();
+    await page.getByText(t('statsHistory', { date: '2026-10-05' }), { exact: true }).waitFor();
+    for (const days of [7, 90, 30]) {
+      await waitForApi(page, '/admin/stats', 'GET', () => page.getByRole('button', { name: t('statsDays', { n: days }), exact: true }).click());
+      await page.locator('.stats-panel .uplot').waitFor();
+      assert.ok(api.requests.some(r => r.path === '/admin/stats' && r.search === `?days=${days}`));
+    }
+    await page.setViewportSize({ width: 390, height: 844 });
+    await page.waitForFunction(() => {
+      const plot = document.querySelector('.stats-panel .uplot');
+      return plot && plot.getBoundingClientRect().width <= plot.parentElement.clientWidth + 1;
+    });
+    assert.equal(await stored(page, ADMIN_KEY), FIXTURE.adminToken);
+  });
+
+  await run('admin: daily stats viewer denial preserves both sessions', async () => {
+    api.state.adminRole = 'viewer';
+    const page = await open('/admin#/stats', bothTokens);
+    await page.getByRole('alert').filter({ hasText: t('statsForbidden') }).waitFor();
+    assert.equal(await page.locator('.stats-panel .uplot').count(), 0);
+    assert.equal(await stored(page, ADMIN_KEY), FIXTURE.adminToken);
+    assert.equal(await stored(page, USER_KEY), FIXTURE.userToken);
+  });
+
+  await run('admin: daily stats database error retries the same range', async () => {
+    api.state.failures.set('GET /admin/stats', { status: 503, error: 'fixture database unavailable' });
+    const page = await open('/admin#/stats', bothTokens);
+    await page.getByRole('alert').filter({ hasText: t('statsLoadFailed') }).waitFor();
+    api.state.failures.delete('GET /admin/stats');
+    await waitForApi(page, '/admin/stats', 'GET', () => page.getByRole('button', { name: t('statsRetry'), exact: true }).click());
+    await page.locator('.stats-panel .uplot').waitFor();
+    assert.equal(await page.getByRole('alert').count(), 0);
+    assert.equal(await stored(page, ADMIN_KEY), FIXTURE.adminToken);
+  });
+
   await run('admin: direct token login uses only admin credential slot', async () => {
     const page = await open('/admin', { [USER_KEY]: FIXTURE.userToken });
     await page.getByRole('button', { name: t('useAdminToken'), exact: true }).click();

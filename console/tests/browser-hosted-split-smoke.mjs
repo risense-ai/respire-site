@@ -404,6 +404,8 @@ page.setDefaultTimeout(30000);
     await call('/admin/users', { token: identity.token });
     await call('/admin/admins', { token: identity.token, expected: 403 });
     await call('/admin/outbox', { token: identity.token, expected: 403 });
+    await call('/admin/stats', { token: identity.token, expected: 403 });
+    await call('/admin/stats', { expected: 401 });
     await call('/admin/admins', { method: 'POST', token: identity.token, body: {}, expected: 403 });
   });
   await step('admin-password-login-and-all-real-views', async () => {
@@ -432,6 +434,42 @@ page.setDefaultTimeout(30000);
     await page.getByRole('dialog', { name: t('userDetail') }).waitFor();
     await screenshot('admin-user-detail');
     await page.getByRole('button', { name: t('close'), exact: true }).click();
+  });
+  await step('admin-daily-stats-ranges-history-and-responsive-readback', async () => {
+    for (const days of [7, 30, 90]) {
+      const stats = await call(`/admin/stats?days=${days}`, { token: ownerToken });
+      assert.equal(stats.days, days);
+      assert.equal(stats.timezone, 'Asia/Shanghai');
+      assert.equal(stats.historical_baseline, 'retained_registrations_and_sessions');
+      assert.match(stats.memory_tracking_since, /^\d{4}-\d{2}-\d{2}$/);
+      assert.equal(stats.series.length, days);
+      assert.ok(stats.series.every((point, i) => {
+        return (!i || stats.series[i - 1].date < point.date)
+          && Number.isInteger(point.registrations) && point.registrations >= 0
+          && Number.isInteger(point.sessions) && point.sessions >= 0
+          && (point.date < stats.memory_tracking_since ? point.memories === null : Number.isInteger(point.memories) && point.memories >= 0);
+      }));
+    }
+    for (const days of ['6', '91', 'abc']) await call(`/admin/stats?days=${days}`, { token: ownerToken, expected: 400 });
+    await navigate('stats');
+    await page.locator('.stats-panel .uplot').waitFor();
+    const stats = await call('/admin/stats', { token: ownerToken });
+    await page.getByText(t('statsHistory', { date: stats.memory_tracking_since }), { exact: true }).waitFor();
+    for (const days of [7, 90, 30]) {
+      const reply = page.waitForResponse(r => new URL(r.url()).origin === origins.api && new URL(r.url()).pathname === '/admin/stats' && new URL(r.url()).search === `?days=${days}`);
+      await page.getByRole('button', { name: t('statsDays', { n: days }), exact: true }).click();
+      assert.equal((await reply).status(), 200);
+      await page.locator('.stats-panel .uplot').waitFor();
+    }
+    await page.setViewportSize({ width: 390, height: 844 });
+    await page.waitForFunction(() => {
+      const plot = document.querySelector('.stats-panel .uplot');
+      return plot && plot.getBoundingClientRect().width <= plot.parentElement.clientWidth + 1;
+    });
+    await screenshot('admin-stats-mobile');
+    await page.setViewportSize({ width: 1440, height: 1000 });
+    assert.equal(await page.evaluate(() => localStorage.getItem('onememory.adminToken')), ownerToken);
+    await screenshot('admin-stats');
   });
   await step('admin-owner-totp-and-auth-boundaries', async () => {
     await navigate('security');

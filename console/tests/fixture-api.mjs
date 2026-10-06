@@ -40,6 +40,7 @@ export async function startFixtureApi({ frontend } = {}) {
       failures: new Map(),
       userTotp: false,
       adminTotp: false,
+      adminRole: 'owner',
       registered: false,
       email: '',
       emailVerified: false,
@@ -224,7 +225,21 @@ export async function startFixtureApi({ frontend } = {}) {
         state.emailVerified = true;
         return json(200, { ok: true });
       }
-      if (method === 'GET' && path === '/admin/me') return json(200, { user: FIXTURE.admin, role: 'owner', kind: 'super_admin', totp: state.adminTotp });
+      if (method === 'GET' && path === '/admin/me') return json(200, { user: FIXTURE.admin, role: state.adminRole, kind: 'super_admin', totp: state.adminTotp });
+      if (method === 'GET' && path === '/admin/stats') {
+        if (state.adminRole === 'viewer') return json(403, { error: 'forbidden' });
+        const rawDays = url.searchParams.get('days');
+        const days = rawDays === null ? 30 : Number(rawDays);
+        if ((rawDays !== null && !/^\+?\d+$/.test(rawDays.trim())) || !Number.isInteger(days) || days < 7 || days > 90) {
+          return json(400, { error: 'days must be an integer between 7 and 90' });
+        }
+        const today = Date.UTC(2026, 9, 6);
+        const series = Array.from({ length: days }, (_, i) => {
+          const date = new Date(today - (days - i - 1) * 86400000).toISOString().slice(0, 10);
+          return { date, registrations: i % 3, memories: date < '2026-10-05' ? null : 2, sessions: i % 4 };
+        });
+        return json(200, { days, timezone: 'Asia/Shanghai', memory_tracking_since: '2026-10-05', historical_baseline: 'retained_registrations_and_sessions', series });
+      }
       if (method === 'GET' && path === '/admin/users') return json(200, { users: [{ user: FIXTURE.user, active: 0, session_count: 1, created_at: '2026-01-01T00:00:00Z' }], total: 1, page: 1, summary: { all: 1, ok: 1, banned: 0, deleted: 0, sessions: 1, ciphertext: 0 } });
       if (method === 'GET' && path === '/admin/admins') return json(200, { admins: [] });
       if (method === 'GET' && ['/admin/outbox', '/admin/audit'].includes(path)) return json(200, { items: [] });
