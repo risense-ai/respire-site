@@ -50,6 +50,8 @@ export async function startFixtureApi({ frontend } = {}) {
       userTicket: 'fixture-user-ticket',
       adminTicket: 'fixture-admin-ticket',
       cliDecision: 'pending',
+      github: { bound: false },
+      githubState: 'a'.repeat(64),
     });
   }
   reset();
@@ -97,6 +99,17 @@ export async function startFixtureApi({ frontend } = {}) {
         if (failure.raw !== undefined) return response.writeHead(failure.status, { 'Content-Type': 'text/plain' }).end(failure.raw);
         return json(failure.status, { error: failure.error });
       }
+      if (method === 'POST' && path === '/oauth/github/start') {
+        assert.equal(request.headers.authorization, undefined);
+        return json(200, { state: state.githubState, expires_in: 600,
+          authorization_uri: `${origin}/dashboard?code=fixture-github-code&state=${state.githubState}` });
+      }
+      if (method === 'POST' && path === '/oauth/github/exchange') {
+        assert.equal(request.headers.authorization, undefined);
+        assert.deepEqual(body, { state: state.githubState, code: 'fixture-github-code' });
+        if (state.userTotp) return json(200, { user: FIXTURE.user, totp_required: true, ticket: state.userTicket });
+        return json(200, { user: FIXTURE.user, token: FIXTURE.userToken });
+      }
       if (method === 'POST' && ['/login', '/admin/login'].includes(path)) {
         const admin = path.startsWith('/admin');
         const auth = admin ? adminAuth : userAuth;
@@ -132,6 +145,18 @@ export async function startFixtureApi({ frontend } = {}) {
       if (method === 'GET' && path === '/api/self') return json(200, { user: FIXTURE.user, active: state.blobs.size });
       if (method === 'GET' && path === '/api/self/sessions') return json(200, { sessions: [{ id: 'fixture-session', device_name: 'fixture-browser', created_at: '2026-01-01T00:00:00Z', current: true }] });
       if (method === 'GET' && path === '/api/self/keys') return json(200, { email: state.email, email_verified: state.emailVerified, totp: state.userTotp });
+      if (method === 'GET' && path === '/api/self/github') return json(200, state.github);
+      if (method === 'POST' && path === '/api/self/github/start') return json(200, { state: state.githubState, expires_in: 600,
+        authorization_uri: `${origin}/dashboard?code=fixture-github-code&state=${state.githubState}` });
+      if (method === 'POST' && path === '/api/self/github/exchange') {
+        assert.deepEqual(body, { state: state.githubState, code: 'fixture-github-code' });
+        state.github = { bound: true, id: 42, login: 'fixture-github' };
+        return json(200, state.github);
+      }
+      if (method === 'POST' && path === '/api/self/github/unbind') {
+        state.github = { bound: false };
+        return json(200, state.github);
+      }
       if (path === '/api/self/totp/disable' && method === 'POST') {
         if (body.code !== FIXTURE.totpCode) return json(400, { error: 'fixture invalid second factor' });
         state.userTotp = false;
@@ -156,6 +181,12 @@ export async function startFixtureApi({ frontend } = {}) {
           return json(200, { ok: true });
         }
         if (method === 'GET') return state.vault ? json(200, state.vault) : json(404, { error: 'fixture vault not initialized' });
+      }
+      if (method === 'POST' && path === '/api/self/github/vault') {
+        if (state.vault || state.blobs.size) return json(409, { error: 'existing vault or memories must be preserved' });
+        assert.equal(body.version, 4);
+        state.vault = body;
+        return json(200, { ok: true });
       }
       if (method === 'GET' && path === '/pull') {
         const since = Number(url.searchParams.get('since') || 0);

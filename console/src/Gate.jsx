@@ -5,6 +5,7 @@ import { Brand } from './Brand.jsx';
 import { authPayload, generateSecretKey, wrapVaultV4 } from './crypto.js';
 import { api, writeSecret } from './api.js';
 import { t } from './i18n.js';
+import { beginGithub } from './githubAuth.js';
 
 export function Gate({ admin, authorization = false, onEnter, notify }) {
   useI18n();
@@ -241,6 +242,10 @@ export function Gate({ admin, authorization = false, onEnter, notify }) {
             }}>{t('resendCode')}</Button>}
             {tab === 'reset' && <Note>{t('resetNotDecrypt')}</Note>}
           </form>
+          {!admin && !ticket && step === 1 && tab !== 'reset' && <Button className="full" disabled={busy} onClick={async () => {
+            setBusy(true); setError('');
+            try { await beginGithub(); } catch (err) { fail(err); setBusy(false); }
+          }}>{t('githubContinue')}</Button>}
           {ticket ? (
             <button className="gate-link" disabled={busy} onClick={() => { setTicket(''); setCode(''); setPass(''); setError(''); }}>{t('backToLogin')}</button>
           ) : admin ? (
