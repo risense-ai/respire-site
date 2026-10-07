@@ -13,10 +13,10 @@
     "src/styles.css": "ec631937ebf2f5121f77543a85f2402d27dc375889a459d6e0fc6252395ac757",
     "tests/hash-route-harness.html": "728cf34b2cfc4acc82d35ac0316061b8043ff2ef8b5b6db94338fe1f2cdf1bf8",
     "tests/hash-route.test.mjs": "67e9e092a1d04f353a964f17493f17782d79246d865a00ce577029814722597c",
-    "tests/i18n.test.mjs": "5422d4ce407d36604fe0a1d834237eccb9978535e4d3de7f6c46e3f374f3a764",
-    "scripts/read-dev-mail.py": "d018080335c5b01d10b9e97abd19e6bf2d29b3364ae379f760dd265779e8ba5b"
+    "tests/i18n.test.mjs": "5422d4ce407d36604fe0a1d834237eccb9978535e4d3de7f6c46e3f374f3a764"
   },
   "intentionally_adapted": [
+    "scripts/read-dev-mail.py",
     "index.html",
     "README.md",
     "package.json",

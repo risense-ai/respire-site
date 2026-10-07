@@ -7,7 +7,7 @@ import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { promisify } from 'node:util';
 import { chromium } from 'playwright';
-import { decryptItem, deriveDataKey, unwrapUrk, generateSecretKey, wrapVaultV4 } from '../src/crypto.js';
+import { decryptItem, deriveDataKeys, unwrapUrk, generateSecretKey, wrapVaultV4 } from '../src/crypto.js';
 import { t } from '../src/i18n.js';
 import { FIXTURE, startFixtureApi, closeServer, listen } from './fixture-api.mjs';
 import { startFixtureProxy } from './fixture-proxy.mjs';
@@ -20,8 +20,8 @@ import { startFixtureProxy } from './fixture-proxy.mjs';
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const temporary = await mkdtemp(resolve(tmpdir(), 'respire-console-fixtures-'));
 const exec = promisify(execFile);
-const USER_KEY = 'onememory.userToken';
-const ADMIN_KEY = 'onememory.adminToken';
+const USER_KEY = 'rsrs.userToken';
+const ADMIN_KEY = 'rsrs.adminToken';
 const bothTokens = { [USER_KEY]: FIXTURE.userToken, [ADMIN_KEY]: FIXTURE.adminToken };
 const uiPath = (mode) => (mode === 'admin' ? '/admin' : '/dashboard');
 const runtimeErrors = [];
@@ -153,7 +153,7 @@ try {
     // Chromium otherwise bypasses proxies for loopback hosts. This only changes
     // proxy routing; browser web security remains enabled.
     proxy: { server: proxy.origin, bypass: '<-loopback>' },
-    ...(process.env.RESPIRE_BROWSER_EXECUTABLE ? { executablePath: process.env.RESPIRE_BROWSER_EXECUTABLE } : {}),
+    ...(process.env.RSRS_BROWSER_EXECUTABLE ? { executablePath: process.env.RSRS_BROWSER_EXECUTABLE } : {}),
   });
 
   for (const mode of ['dashboard', 'admin']) {
@@ -166,7 +166,7 @@ try {
 
     await run(`${mode}: own token only, shell, and sign-out separation`, async () => {
       const start = api.requests.length;
-      const page = await open(uiPath(mode), bothTokens);
+      const page = await open(uiPath(mode), { 'onememory.userToken': FIXTURE.userToken, 'onememory.adminToken': FIXTURE.adminToken });
       await page.locator(`.console-main.surface-${mode === 'admin' ? 'users' : 'memories'}`).waitFor();
       // Let the shell's profile load finish before inspecting outgoing headers.
       await page.locator('.workspace-switch strong').filter({ hasText: mode === 'admin' ? FIXTURE.admin : FIXTURE.user }).waitFor();
@@ -178,8 +178,11 @@ try {
       assert.ok(calls.every(r => mode === 'admin' ? r.path.startsWith('/admin/') : !r.path.startsWith('/admin/')));
       await page.locator('.sidebar-bottom').getByRole('button', { name: t('signOut'), exact: true }).click();
       await page.locator('.gate-form').waitFor();
-      assert.equal(await stored(page, mode === 'admin' ? ADMIN_KEY : USER_KEY), null);
-      assert.equal(await stored(page, mode === 'admin' ? USER_KEY : ADMIN_KEY), mode === 'admin' ? FIXTURE.userToken : FIXTURE.adminToken);
+      assert.equal(await stored(page, mode === 'admin' ? ADMIN_KEY : USER_KEY), '');
+      assert.equal(await stored(page, mode === 'admin' ? 'onememory.userToken' : 'onememory.adminToken'), mode === 'admin' ? FIXTURE.userToken : FIXTURE.adminToken);
+
+      await page.reload();
+      await page.locator('.gate-form').waitFor();
     });
 
     await run(`${mode}: opposite token cannot authenticate`, async () => {
@@ -194,7 +197,7 @@ try {
       api.state.failures.set(`GET ${probe}`, { status: 401, error: 'fixture expired session' });
       const page = await open(uiPath(mode), bothTokens);
       await page.locator('.gate-form').waitFor();
-      assert.equal(await stored(page, mode === 'admin' ? ADMIN_KEY : USER_KEY), null);
+      assert.equal(await stored(page, mode === 'admin' ? ADMIN_KEY : USER_KEY), '');
       assert.equal(await stored(page, mode === 'admin' ? USER_KEY : ADMIN_KEY), mode === 'admin' ? FIXTURE.userToken : FIXTURE.adminToken);
     });
 
@@ -330,7 +333,7 @@ try {
       api.state.failures.set(`GET ${mode === 'admin' ? '/admin/me' : '/api/self'}`, { status: 403, error: 'fixture forbidden probe' });
       const page = await open(uiPath(mode), bothTokens);
       await page.locator('.gate-form').waitFor();
-      assert.equal(await stored(page, mode === 'admin' ? ADMIN_KEY : USER_KEY), null);
+      assert.equal(await stored(page, mode === 'admin' ? ADMIN_KEY : USER_KEY), '');
       assert.equal(await stored(page, mode === 'admin' ? USER_KEY : ADMIN_KEY), mode === 'admin' ? FIXTURE.userToken : FIXTURE.adminToken);
     });
   }
@@ -347,7 +350,7 @@ try {
     api.state.failures.set('GET /admin/users', { status: 403, error: 'admin token required' });
     const page = await open('/admin', bothTokens);
     await page.locator('.gate-form').waitFor();
-    assert.equal(await stored(page, ADMIN_KEY), null);
+    assert.equal(await stored(page, ADMIN_KEY), '');
     assert.equal(await stored(page, USER_KEY), FIXTURE.userToken);
   });
 
@@ -373,7 +376,7 @@ try {
     api.state.failures.set('POST /api/self/email', { status: 401, error: 'fixture revoked session' });
     await page.getByRole('button', { name: t('sendCode'), exact: true }).click();
     await page.locator('.gate-form').waitFor();
-    assert.equal(await stored(page, USER_KEY), null);
+    assert.equal(await stored(page, USER_KEY), '');
     assert.equal(await stored(page, ADMIN_KEY), FIXTURE.adminToken);
   });
 
@@ -571,7 +574,7 @@ try {
     await dialog.waitFor({ state: 'hidden' });
     assert.equal(api.state.blobs.size, 1);
     const [blob] = api.state.blobs.values();
-    const key = await deriveDataKey(await unwrapUrk(recovery, '', api.state.vault));
+    const key = await deriveDataKeys(await unwrapUrk(recovery, '', api.state.vault), true);
     const decrypted = JSON.parse(await decryptItem(key, blob.ciphertext, blob.nonce));
     assert.equal(decrypted.title, title);
     assert.equal(decrypted.content, content);
@@ -593,10 +596,10 @@ try {
     assert.equal(JSON.parse(await decryptItem(key, saved.ciphertext, saved.nonce)).content, edited);
     assert.ok(api.requests.some(r => r.path === '/api/self/memories' && r.search.includes('snapshot=0')), 'Saving should use incremental sync');
     const vaultReads = api.requests.filter(r => r.path === '/api/self/vault').length;
-    await page.evaluate(() => localStorage.removeItem('onememory.superPass'));
+    await page.evaluate(() => localStorage.removeItem('rsrs.superPass'));
     await waitForApi(page, '/api/self/memories', 'GET', () => page.getByRole('button', { name: t('pullLatest'), exact: true }).click());
     assert.equal(api.requests.filter(r => r.path === '/api/self/vault').length, vaultReads, 'Pull latest must retain the unlocked controller without requesting the vault or saved key again');
-    await page.evaluate(value => localStorage.setItem('onememory.superPass', value), recovery);
+    await page.evaluate(value => localStorage.setItem('rsrs.superPass', value), recovery);
     const pagerIds = Array.from({ length: 24 }, (_, n) => `fixture-pager-${n}`);
     for (const id of pagerIds) api.state.blobs.set(id, { ...saved, id, revision: ++api.state.revision });
     await waitForApi(page, '/api/self/memories', 'GET', () => page.getByRole('button', { name: t('pullLatest'), exact: true }).click());
@@ -627,7 +630,7 @@ try {
     await page.getByLabel(t('searchMemory'), { exact: true }).fill(title);
     await page.locator('.search-hit').filter({ hasText: title }).click();
     await page.locator('.reading-main').getByText(edited, { exact: true }).waitFor();
-    await page.evaluate(() => localStorage.setItem('onememory.superPassAt', String(Date.now() - 4 * 24 * 3600 * 1000)));
+    await page.evaluate(() => localStorage.setItem('rsrs.superPassAt', String(Date.now() - 4 * 24 * 3600 * 1000)));
     await page.reload();
     await page.locator('.locked-state').waitFor();
     await page.getByRole('button', { name: t('unlockMemory'), exact: true }).click();
