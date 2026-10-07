@@ -100,6 +100,12 @@ export async function startFixtureApi({ frontend } = {}) {
         if (failure.raw !== undefined) return response.writeHead(failure.status, { 'Content-Type': 'text/plain' }).end(failure.raw);
         return json(failure.status, { error: failure.error });
       }
+      if (method === 'GET' && path === '/auth/salt') {
+        const auth = url.searchParams.get('kind') === 'admin' ? adminAuth : userAuth;
+        assert.equal(url.searchParams.get('user'), auth.user);
+        assert.equal(request.headers.authorization, undefined);
+        return json(200, { salt: auth.salt });
+      }
       if (method === 'POST' && path === '/oauth/github/start') {
         assert.equal(request.headers.authorization, undefined);
         return json(200, { state: state.githubState, expires_in: 600,
@@ -175,7 +181,7 @@ export async function startFixtureApi({ frontend } = {}) {
       if (path === '/api/self/vault') {
         if (method === 'POST') {
           assert.equal(body.version, 4);
-          assert.match(body.wrapped_urk, /^[0-9a-f]{96}$/);
+          assert.match(body.wrapped_urk, /^rsrs:v1:[0-9a-f]{96}$/);
           assert.match(body.urk_nonce, /^[0-9a-f]{24}$/);
           assert.match(body.kdf_salt, /^[0-9a-f]{32}$/);
           state.vault = body;
@@ -207,7 +213,7 @@ export async function startFixtureApi({ frontend } = {}) {
         return json(200, { epoch: 'fixture-epoch', cursor, until, has_more, blobs });
       }
       if (method === 'POST' && path === '/push') {
-        assert.match(body.ciphertext, /^[0-9a-f]+$/);
+        assert.match(body.ciphertext, /^rsrs:v1:[0-9a-f]+$/);
         assert.match(body.nonce, /^[0-9a-f]{24}$/);
         assert.equal(body.embedding_enc, '');
         assert.equal(body.deleted, false);

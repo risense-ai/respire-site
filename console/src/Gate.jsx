@@ -2,8 +2,8 @@ import { useState } from 'react';
 import { ArrowRight, ShieldCheck, LockKey, Key } from '@phosphor-icons/react';
 import { Button, Badge, Note, LangSwitch, useI18n } from './ui.jsx';
 import { Brand } from './Brand.jsx';
-import { authPayload, generateSecretKey, wrapVaultV4 } from './crypto.js';
-import { api, writeSecret } from './api.js';
+import { authPayload, deriveSalt, generateSecretKey, wrapVaultV4 } from './crypto.js';
+import { api, writeSecret, writeSuper } from './api.js';
 import { t } from './i18n.js';
 import { beginGithub } from './githubAuth.js';
 
@@ -26,6 +26,19 @@ export function Gate({ admin, authorization = false, onEnter, notify }) {
   const [issued, setIssued] = useState(null);
 
   const fail = (e) => setError(e.message || String(e));
+
+  async function loginPayload() {
+    let salt;
+    try {
+      const reply = await api(`/auth/salt?user=${encodeURIComponent(user.trim())}${admin ? '&kind=admin' : ''}`);
+      if (typeof reply.salt !== 'string' || !reply.salt) throw new Error('Invalid authentication salt');
+      salt = reply.salt;
+    } catch (err) {
+      if (err.status !== 404) throw err;
+      salt = await deriveSalt(user, 'onememory');
+    }
+    return authPayload(user, pass, salt);
+  }
 
   const finishUser = (token, superPass, secretKey) => {
     onEnter({ token, superPass, secretKey });
@@ -53,7 +66,7 @@ export function Gate({ admin, authorization = false, onEnter, notify }) {
           onEnter({ token: reply.token });
           return;
         }
-        const payload = await authPayload(user, pass);
+        const payload = await loginPayload();
         const reply = await api('/admin/login', { method: 'POST', body: { user: payload.user, pass_hash: payload.pass_hash } });
         if (reply.totp_required) {
           setTicket(reply.ticket);
@@ -78,16 +91,15 @@ export function Gate({ admin, authorization = false, onEnter, notify }) {
       if (step === 2) {
         setBusy(true);
         try {
-          const payload = await authPayload(user, pass);
+          const payload = await loginPayload();
           const reply = await api('/register', { method: 'POST', body: { ...payload, device_name: 'dashboard' } });
           // v4 uses a generated A3- recovery code as the single memory unlock factor.
           const superPass = generateSecretKey();
           const vault = await wrapVaultV4(superPass);
           await api('/api/self/vault', { method: 'POST', token: reply.token, body: vault });
           // Store under the same localStorage key used by api.js SUPER_KEY.
-          try { localStorage.setItem('onememory.superPass', superPass); } catch {}
-          try { localStorage.setItem('onememory.superPassAt', String(Date.now())); } catch {}
-          try { localStorage.removeItem('onememory.secretKey'); } catch {}
+          writeSuper(superPass);
+          writeSecret('');
           setIssued({ token: reply.token, superPass });
           setStep(3);
         } catch (err) {
@@ -141,7 +153,7 @@ export function Gate({ admin, authorization = false, onEnter, notify }) {
         finishUser(reply.token, superpass, undefined);
         return;
       }
-      const payload = await authPayload(user, pass);
+      const payload = await loginPayload();
       const reply = await api('/login', { method: 'POST', body: { user: payload.user, pass_hash: payload.pass_hash, device_name: 'dashboard' } });
       if (reply.totp_required) {
         setTicket(reply.ticket);
