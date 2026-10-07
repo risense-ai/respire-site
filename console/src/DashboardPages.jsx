@@ -3,7 +3,7 @@ import {
   TreeStructure, Clock, MagnifyingGlass, CaretRight, LockKey, ShieldCheck,
   CloudCheck, Desktop, Terminal, Plus, Key, Copy, Check, Eye, EyeSlash, DownloadSimple,
   SignOut, ArrowClockwise, Article, ArrowLeft, X, WarningCircle, PencilSimple, Trash,
-  ListBullets, CaretDown, BookOpen, SquaresFour, Compass, ListChecks, Heart, Wrench, Smiley, Tag,
+  ListBullets, CaretDown, BookOpen, SquaresFour, Compass, ListChecks, Heart, Wrench, Smiley, Tag, ShareNetwork,
 } from '@phosphor-icons/react';
 import { Button, Badge, Heading, Empty, Note, SecretResult, copy, download, useI18n } from './ui.jsx';
 import { decryptItem, deriveDataKey, encryptItem, generateSecretKey, unwrapUrk, wrapVaultV4 } from './crypto.js';
@@ -11,6 +11,7 @@ import { api, readSecret, readSuper, readToken, USER_KEY, superFresh, superFresh
 import { MemorySync } from './memorySync.js';
 import { Security } from './Security.jsx';
 import { buildIndex, childrenOf, subtreeCount, diaryDays, visibleRows, ROOT_ID, DIARY_ID } from './treeModel.js';
+import GraphView from './GraphView.jsx';
 import { t, getLocale, kindLabel } from './i18n.js';
 
 /** Normalize tags: CLI payloads may use CSV, while browser editing uses arrays. */
@@ -600,10 +601,10 @@ export function DashboardPages({
                 {query && <button className="icon-button" aria-label={t('clear')} onClick={() => setQuery('')}><X size={17} /></button>}
               </label>
               <div className="collection-title">
-                <h2>{query ? t('searchResults') : (viewMode === 'tree' ? t('memoryTree') : viewMode === 'card' ? t('memoryCards') : t('allMemories'))}</h2>
+                <h2>{query ? t('searchResults') : (viewMode === 'tree' ? t('memoryTree') : viewMode === 'card' ? t('memoryCards') : viewMode === 'graph' ? t('memoryGraph') : t('allMemories'))}</h2>
                 <div className="collection-tools">
                   <div className="tabs view-tabs" role="tablist" aria-label={t('viewSwitcher')}>
-                    {[['tree', TreeStructure, t('treeView')], ['list', ListBullets, t('listView')], ['card', SquaresFour, t('cardView')]].map(([mode, Icon, label]) => (
+                    {[['tree', TreeStructure, t('treeView')], ['list', ListBullets, t('listView')], ['card', SquaresFour, t('cardView')], ['graph', ShareNetwork, t('graphView')]].map(([mode, Icon, label]) => (
                       <button key={mode} role="tab" aria-selected={viewMode === mode} className={viewMode === mode ? 'active' : ''} onClick={() => setViewMode(mode)} title={label}>
                         <Icon size={15} />
                         <span className="view-tab-label">{label}</span>
@@ -662,6 +663,8 @@ export function DashboardPages({
                     );
                   })}
                 </div>
+              ) : viewMode === 'graph' && treeSource.length ? (
+                <GraphView items={treeSource} onOpen={openMemory} />
               ) : viewMode === 'tree' && treeSource.length ? (
                 <div className="tree-view">
                   {treeRows.map(({ row, depth, open, hasKids }) => (
