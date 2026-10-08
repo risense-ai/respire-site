@@ -41,6 +41,7 @@ export async function startFixtureApi({ frontend } = {}) {
   function reset() {
     Object.assign(state, {
       failures: new Map(),
+      rotatedToken: null,
       selfGates: new Map(),
       memoriesGate: null,
       userTotp: false,
@@ -154,11 +155,15 @@ export async function startFixtureApi({ frontend } = {}) {
       }
       const admin = path.startsWith('/admin/');
       const second = request.headers.authorization === `Bearer ${FIXTURE.secondToken}`;
-      const expectedToken = admin ? FIXTURE.adminToken : second ? FIXTURE.secondToken : FIXTURE.userToken;
+      const expectedToken = admin ? FIXTURE.adminToken : second ? FIXTURE.secondToken : (state.rotatedToken || FIXTURE.userToken);
       if (request.headers.authorization !== `Bearer ${expectedToken}`) return json(admin ? 403 : 401, { error: admin ? 'admin token required' : 'fixture expired session' });
       if (method === 'GET' && path === '/api/self') {
         await state.selfGates.get(expectedToken);
         return json(200, { user: second ? FIXTURE.secondUser : FIXTURE.user, active: state.blobs.size });
+      }
+      if (method === 'POST' && path === '/api/self/rotate') {
+        state.rotatedToken = 'fixture-rotated-token';
+        return json(200, { token: state.rotatedToken });
       }
       if (method === 'GET' && path === '/api/self/sessions') return json(200, { sessions: [{ id: 'fixture-session', device_name: 'fixture-browser', created_at: '2026-01-01T00:00:00Z', current: true }] });
       if (method === 'GET' && path === '/api/self/keys') return json(200, { email: state.email, email_verified: state.emailVerified, totp: state.userTotp });

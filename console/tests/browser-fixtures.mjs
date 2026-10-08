@@ -14,6 +14,12 @@ import { t } from '../src/i18n.js';
 import { FIXTURE, startFixtureApi, closeServer, listen } from './fixture-api.mjs';
 import { startFixtureProxy } from './fixture-proxy.mjs';
 
+async function assertNoRecoveryStorage(page) {
+  const keys = await page.evaluate(() => [localStorage, sessionStorage].flatMap(storage =>
+    Object.keys(storage).filter(key => /^(rsrs|onememory)\.(superPass|secretKey|superPassAt)$/.test(key))));
+  assert.deepEqual(keys, [], 'No plaintext recovery material may be persisted');
+}
+
 // Exercise the compiled single-file bundle against a real loopback service that
 // serves the UI separately from the API, mirroring the Pages deployment.
 // Both console paths serve the same bundle; JSON requests use the explicit API
@@ -170,18 +176,14 @@ try {
       assert.equal(await stored(page, USER_KEY), FIXTURE.userToken);
     });
   }
-  await run('dashboard: switch accounts clears unlock material and logout keeps other sessions', async () => {
+  await run('dashboard: switch accounts stores no unlock material and logout keeps other sessions', async () => {
     const page = await open('/dashboard', { [USER_KEY]: FIXTURE.userToken, [accountKey]: JSON.stringify(savedAccounts) });
     await page.locator('.workspace-switch strong').filter({ hasText: FIXTURE.user }).waitFor();
-    await page.evaluate(() => {
-      localStorage.setItem('rsrs.superPass', 'synthetic-old-unlock');
-      localStorage.setItem('rsrs.secretKey', 'synthetic-old-secret');
-    });
     await page.getByLabel(t('switchAccount'), { exact: true }).selectOption(FIXTURE.secondToken);
     await page.locator('.workspace-switch strong').filter({ hasText: FIXTURE.secondUser }).waitFor();
     assert.equal(await stored(page, USER_KEY), FIXTURE.secondToken);
-    assert.equal(await stored(page, 'rsrs.superPass'), '');
-    assert.equal(await stored(page, 'rsrs.secretKey'), '');
+    assert.equal(await stored(page, 'rsrs.superPass'), null);
+    assert.equal(await stored(page, 'rsrs.secretKey'), null);
     await page.locator('.sidebar-bottom').getByRole('button', { name: t('signOut'), exact: true }).click();
     await page.locator('.gate-form').waitFor();
     assert.equal(await stored(page, USER_KEY), '');
@@ -190,7 +192,16 @@ try {
   await run('dashboard: page-memory unlock survives switching but not lock, reload or logout', async () => {
     const recovery = generateSecretKey();
     api.state.vault = await wrapVaultV4(recovery);
-    const page = await open('/dashboard', { [USER_KEY]: FIXTURE.userToken, [accountKey]: JSON.stringify(savedAccounts), 'rsrs.superPass': recovery, 'rsrs.superPassAt': String(Date.now()) });
+    const page = await open('/dashboard', { [USER_KEY]: FIXTURE.userToken, [accountKey]: JSON.stringify(savedAccounts) });
+    const unlock = async () => {
+      await page.getByRole('button', { name: t('unlockMemory'), exact: true }).click();
+      await page.getByRole('dialog').getByLabel(t('labelSuperA3'), { exact: true }).fill(recovery);
+      await page.getByRole('dialog').getByRole('button', { name: t('unlockView'), exact: true }).click();
+      await page.getByRole('dialog').waitFor({ state: 'hidden' });
+      await page.locator('.memory-collection').waitFor();
+      await assertNoRecoveryStorage(page);
+    };
+    await unlock();
     await page.locator('.memory-collection').waitFor();
     const select = page.getByLabel(t('switchAccount'), { exact: true });
     const swap = async token => {
@@ -201,17 +212,10 @@ try {
     await page.locator('.locked-state').waitFor();
     await swap(FIXTURE.userToken);
     await page.locator('.memory-collection').waitFor();
-    assert.equal(await stored(page, 'rsrs.superPass'), '', 'Restoring derived keys must not persist the recovery code');
-    assert.equal(await stored(page, 'rsrs.secretKey'), '');
+    assert.equal(await stored(page, 'rsrs.superPass'), null, 'Restoring derived keys must not persist the recovery code');
+    assert.equal(await stored(page, 'rsrs.secretKey'), null);
     await page.reload();
     await page.locator('.locked-state').waitFor();
-    const unlock = async () => {
-      await page.getByRole('button', { name: t('unlockMemory'), exact: true }).click();
-      await page.getByRole('dialog').getByLabel(t('labelSuperA3'), { exact: true }).fill(recovery);
-      await page.getByRole('dialog').getByRole('button', { name: t('unlockView'), exact: true }).click();
-      await page.getByRole('dialog').waitFor({ state: 'hidden' });
-      await page.locator('.memory-collection').waitFor();
-    };
     await unlock();
     await page.getByRole('button', { name: t('lock'), exact: true }).click();
     await swap(FIXTURE.secondToken);
@@ -222,6 +226,89 @@ try {
     await enterCredentials(page);
     await submit(page);
     await page.locator('.locked-state').waitFor();
+  });
+
+  await run('dashboard: legacy recovery requires backup confirmation and is never used to unlock', async () => {
+    const recovery = generateSecretKey();
+    api.state.vault = await wrapVaultV4(recovery);
+    const legacy = { 'onememory.superPass': recovery, 'onememory.secretKey': 'synthetic-secret', 'rsrs.superPass': recovery };
+    const page = await open('/dashboard', { [USER_KEY]: FIXTURE.userToken, ...legacy });
+    await page.locator('.locked-state').waitFor();
+    await page.getByRole('button', { name: t('unlockMemory'), exact: true }).click();
+    assert.equal(await page.getByRole('dialog').getByLabel(t('labelSuperA3'), { exact: true }).inputValue(), '');
+    await page.getByRole('dialog').getByRole('button', { name: t('cancel'), exact: true }).click();
+    await page.goto(`${origin}/dashboard#/keys`);
+    await page.getByText(t('legacyRecoveryWarning'), { exact: true }).waitFor();
+    const downloadEvent = page.waitForEvent('download');
+    await page.getByRole('button', { name: t('legacyRecoveryExport'), exact: true }).click();
+    const backup = await downloadEvent;
+    const chunks = [];
+    for await (const chunk of await backup.createReadStream()) chunks.push(chunk);
+    assert.equal(JSON.parse(Buffer.concat(chunks).toString())['localStorage:onememory.superPass'], recovery);
+    await page.getByRole('button', { name: t('legacyRecoveryClear'), exact: true }).click();
+    const dialog = page.getByRole('dialog');
+    await dialog.getByRole('button', { name: t('legacyRecoveryClear'), exact: true }).click();
+    await dialog.getByRole('alert').waitFor();
+    assert.equal(await stored(page, 'onememory.superPass'), recovery);
+    await dialog.getByLabel(t('legacyBackupConfirm'), { exact: true }).selectOption('yes');
+    await dialog.getByRole('button', { name: t('legacyRecoveryClear'), exact: true }).click();
+    await dialog.waitFor({ state: 'hidden' });
+    for (const key of Object.keys(legacy)) assert.equal(await stored(page, key), null);
+    assert.equal(await stored(page, USER_KEY), FIXTURE.userToken);
+  });
+
+  await run('dashboard: blocked sessionStorage reads do not break recovery controls', async () => {
+    const page = await open('/dashboard', { [USER_KEY]: FIXTURE.userToken });
+    await page.locator('.workspace-switch strong').waitFor();
+    await page.evaluate(() => {
+      const read = Storage.prototype.getItem;
+      Storage.prototype.getItem = function(key) {
+        if (this === sessionStorage) throw new DOMException('fixture blocked', 'SecurityError');
+        return read.call(this, key);
+      };
+    });
+    await page.goto(`${origin}/dashboard#/keys`);
+    await page.getByText(t('memoryOnlyDescription'), { exact: true }).first().waitFor();
+    assert.equal(await stored(page, USER_KEY), FIXTURE.userToken);
+  });
+  await run('dashboard: token rotation preserves only the rotating account unlock session', async () => {
+    const recovery = generateSecretKey();
+    api.state.vault = await wrapVaultV4(recovery);
+    const page = await open('/dashboard', { [USER_KEY]: FIXTURE.userToken, [accountKey]: JSON.stringify(savedAccounts) });
+    const swap = async token => {
+      await page.getByLabel(t('switchAccount'), { exact: true }).selectOption(token);
+      await page.waitForFunction(token => localStorage.getItem('rsrs.userToken') === token, token);
+    };
+    const unlock = async () => {
+      await page.getByRole('button', { name: t('unlockMemory'), exact: true }).click();
+      const dialog = page.getByRole('dialog');
+      await dialog.getByLabel(t('labelSuperA3'), { exact: true }).fill(recovery);
+      await dialog.getByRole('button', { name: t('unlockView'), exact: true }).click();
+      await dialog.waitFor({ state: 'hidden' });
+      await page.locator('.memory-collection').waitFor();
+    };
+    await unlock();
+    await swap(FIXTURE.secondToken);
+    await unlock();
+    await swap(FIXTURE.userToken);
+    await page.locator('.memory-collection').waitFor();
+    await page.goto(`${origin}/dashboard#/sessions`);
+    await page.getByRole('button', { name: t('rotateToken'), exact: true }).click();
+    await page.waitForFunction(() => localStorage.getItem('rsrs.userToken') === 'fixture-rotated-token');
+    await page.goto(`${origin}/dashboard#/memories`);
+    await page.locator('.memory-collection').waitFor();
+    await assertNoRecoveryStorage(page);
+    await swap(FIXTURE.secondToken);
+    await page.locator('.memory-collection').waitFor();
+    await swap('fixture-rotated-token');
+    await page.locator('.memory-collection').waitFor();
+    await page.getByRole('button', { name: t('lock'), exact: true }).click();
+    await swap(FIXTURE.secondToken);
+    await page.locator('.memory-collection').waitFor();
+    await swap('fixture-rotated-token');
+    await page.locator('.locked-state').waitFor();
+    const accounts = JSON.parse(await stored(page, accountKey));
+    assert.equal(accounts.some(row => row.token === FIXTURE.userToken), false);
   });
 
   await run('dashboard: add another login retains both sessions without passwords or keys', async () => {
@@ -643,6 +730,7 @@ try {
     await page.locator('.console-main').waitFor();
     assert.equal(await stored(page, USER_KEY), FIXTURE.userToken);
     assert.equal(JSON.stringify(api.state.vault), original);
+    await assertNoRecoveryStorage(page);
     assert.equal(new URL(page.url()).search, '');
     assert.equal(api.requests.filter(r => r.method === 'POST' && r.path === '/oauth/github/exchange').length, 1);
   });
@@ -743,6 +831,7 @@ try {
     await submit(page, 'enterMemory');
     await page.getByRole('button', { name: t('saveMemory'), exact: true }).waitFor();
     assert.equal(await stored(page, ADMIN_KEY), FIXTURE.adminToken);
+    await assertNoRecoveryStorage(page);
     const title = 'Synthetic fixture memory';
     const content = 'Only a synthetic encrypted fixture, with no personal data.';
     await page.getByRole('button', { name: t('saveMemory'), exact: true }).click();
@@ -775,10 +864,8 @@ try {
     assert.equal(JSON.parse(await decryptItem(key, saved.ciphertext, saved.nonce)).content, edited);
     assert.ok(api.requests.some(r => r.path === '/api/self/memories' && r.search.includes('snapshot=0')), 'Saving should use incremental sync');
     const vaultReads = api.requests.filter(r => r.path === '/api/self/vault').length;
-    await page.evaluate(() => localStorage.removeItem('rsrs.superPass'));
     await waitForApi(page, '/api/self/memories', 'GET', () => page.getByRole('button', { name: t('pullLatest'), exact: true }).click());
     assert.equal(api.requests.filter(r => r.path === '/api/self/vault').length, vaultReads, 'Pull latest must retain the unlocked controller without requesting the vault or saved key again');
-    await page.evaluate(value => localStorage.setItem('rsrs.superPass', value), recovery);
     const collection = page.locator('.memory-collection');
     const beforeSync = await collection.boundingBox();
     let release;
@@ -812,6 +899,11 @@ try {
     await waitForApi(page, '/api/self/memories', 'GET', () => page.getByRole('button', { name: t('pullLatest'), exact: true }).click());
     await page.locator('.memory-status').getByText(t('nMemories', { n: 1 }), { exact: true }).waitFor();
     await page.goto(`${origin}/dashboard/memories/${blob.id}`);
+    await page.locator('.locked-state').waitFor();
+    await page.getByRole('button', { name: t('unlockMemory'), exact: true }).click();
+    await page.getByRole('dialog').getByLabel(t('labelSuperA3'), { exact: true }).fill(recovery);
+    await page.getByRole('dialog').getByRole('button', { name: t('unlockView'), exact: true }).click();
+    await page.getByRole('dialog').waitFor({ state: 'hidden' });
     await page.locator('.reading-main').getByText(edited, { exact: true }).waitFor();
     assert.equal(new URL(page.url()).hash, `#/memories/${blob.id}`);
     await page.getByRole('button', { name: t('backMemory'), exact: true }).click();
@@ -819,17 +911,17 @@ try {
     await page.locator('.locked-state').waitFor();
     assert.equal(await page.locator('.reading-main').count(), 0);
     await page.getByRole('button', { name: t('unlockMemory'), exact: true }).click();
+    await page.getByRole('dialog').getByLabel(t('labelSuperA3'), { exact: true }).fill(recovery);
     await page.getByRole('dialog').getByRole('button', { name: t('unlockView'), exact: true }).click();
     await page.getByRole('dialog').waitFor({ state: 'hidden' });
     await page.getByLabel(t('searchMemory'), { exact: true }).fill(title);
     await page.locator('.search-hit').filter({ hasText: title }).click();
     await page.locator('.reading-main').getByText(edited, { exact: true }).waitFor();
-    await page.evaluate(() => localStorage.setItem('rsrs.superPassAt', String(Date.now() - 4 * 24 * 3600 * 1000)));
     await page.reload();
     await page.locator('.locked-state').waitFor();
     await page.getByRole('button', { name: t('unlockMemory'), exact: true }).click();
     const recoveryField = page.getByRole('dialog').getByLabel(t('labelSuperA3'), { exact: true });
-    assert.equal(await recoveryField.inputValue(), '', 'Expired recovery codes must not prefill or auto-unlock');
+    assert.equal(await recoveryField.inputValue(), '', 'Reload must not prefill or auto-unlock');
     await recoveryField.fill(recovery);
     await page.getByRole('dialog').getByRole('button', { name: t('unlockView'), exact: true }).click();
     await page.getByRole('dialog').waitFor({ state: 'hidden' });
