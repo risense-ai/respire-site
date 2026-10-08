@@ -3,6 +3,8 @@ const STORAGE = 'respire.uiLocale';
 
 const EN = {
   switchAccount: 'Switch account',
+  sessionStorageFailed: 'Could not save the active session. Check browser storage settings.',
+  accountListFailed: 'Could not update the saved account list. Sign in again if needed.',
   addAccount: 'Sign in to another account',
   language: 'Language',
   checkingLogin: 'Checking sign-in…',
@@ -527,6 +529,8 @@ const EN = {
 
 const ZH = {
   switchAccount: '切换账号',
+  sessionStorageFailed: '无法保存当前登录，请检查浏览器存储设置。',
+  accountListFailed: '无法更新已保存账号列表，请按需重新登录。',
   addAccount: '登录其他账号',
   language: '语言',
   checkingLogin: '正在确认登录…',

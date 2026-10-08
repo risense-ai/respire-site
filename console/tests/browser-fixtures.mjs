@@ -156,6 +156,105 @@ try {
     ...(process.env.RESPIRE_BROWSER_EXECUTABLE ? { executablePath: process.env.RESPIRE_BROWSER_EXECUTABLE } : {}),
   });
 
+  const accountKey = 'rsrs.dashboard.accounts';
+  const savedAccounts = [
+    { user: FIXTURE.user, token: FIXTURE.userToken },
+    { user: FIXTURE.secondUser, token: FIXTURE.secondToken },
+  ];
+  for (const value of ['broken-json', '[null,17,{}]', '{"invalid":true}']) {
+    await run(`dashboard: invalid account list remains usable (${value})`, async () => {
+      const page = await open('/dashboard', { [USER_KEY]: FIXTURE.userToken, [accountKey]: value });
+      await page.locator('.workspace-switch strong').filter({ hasText: FIXTURE.user }).waitFor();
+      assert.equal(await stored(page, USER_KEY), FIXTURE.userToken);
+    });
+  }
+  await run('dashboard: switch accounts clears unlock material and logout keeps other sessions', async () => {
+    const page = await open('/dashboard', { [USER_KEY]: FIXTURE.userToken, [accountKey]: JSON.stringify(savedAccounts) });
+    await page.locator('.workspace-switch strong').filter({ hasText: FIXTURE.user }).waitFor();
+    await page.evaluate(() => {
+      localStorage.setItem('onememory.superPass', 'synthetic-old-unlock');
+      localStorage.setItem('onememory.secretKey', 'synthetic-old-secret');
+    });
+    await page.getByLabel(t('switchAccount'), { exact: true }).selectOption(FIXTURE.secondToken);
+    await page.locator('.workspace-switch strong').filter({ hasText: FIXTURE.secondUser }).waitFor();
+    assert.equal(await stored(page, USER_KEY), FIXTURE.secondToken);
+    assert.equal(await stored(page, 'onememory.superPass'), null);
+    assert.equal(await stored(page, 'onememory.secretKey'), null);
+    await page.locator('.sidebar-bottom').getByRole('button', { name: t('signOut'), exact: true }).click();
+    await page.locator('.gate-form').waitFor();
+    assert.equal(await stored(page, USER_KEY), null);
+    assert.deepEqual(JSON.parse(await stored(page, accountKey)), savedAccounts.slice(0, 1));
+  });
+  await run('dashboard: add another login retains both sessions without passwords or keys', async () => {
+    const page = await open('/dashboard', { [USER_KEY]: FIXTURE.userToken });
+    await page.locator('.workspace-switch strong').filter({ hasText: FIXTURE.user }).waitFor();
+    await page.getByRole('button', { name: t('addAccount'), exact: true }).click();
+    await page.getByLabel(t('username'), { exact: true }).fill(FIXTURE.secondUser);
+    await page.getByLabel(t('loginPassword'), { exact: true }).fill(FIXTURE.password);
+    await submit(page);
+    await page.locator('.workspace-switch strong').filter({ hasText: FIXTURE.secondUser }).waitFor();
+    assert.deepEqual(JSON.parse(await stored(page, accountKey)), savedAccounts);
+  });
+  await run('dashboard: failed target session preserves active account', async () => {
+    const expired = { user: 'expired-fixture', token: 'expired-fixture-token' };
+    const page = await open('/dashboard', { [USER_KEY]: FIXTURE.userToken, [accountKey]: JSON.stringify([...savedAccounts, expired]) });
+    await page.locator('.workspace-switch strong').filter({ hasText: FIXTURE.user }).waitFor();
+    await page.getByLabel(t('switchAccount'), { exact: true }).selectOption(expired.token);
+    await page.getByRole('status').filter({ hasText: 'fixture expired session' }).waitFor();
+    assert.equal(await stored(page, USER_KEY), FIXTURE.userToken);
+    assert.equal(JSON.parse(await stored(page, accountKey)).some(row => row.token === expired.token), false);
+  });
+  await run('dashboard: late account switch cannot undo cross-tab logout', async () => {
+    const page = await open('/dashboard', { [USER_KEY]: FIXTURE.userToken, [accountKey]: JSON.stringify(savedAccounts) });
+    await page.locator('.workspace-switch strong').filter({ hasText: FIXTURE.user }).waitFor();
+    let release;
+    api.state.selfGates.set(FIXTURE.secondToken, new Promise(resolve => { release = resolve; }));
+    const request = page.waitForRequest(r => new URL(r.url()).pathname === '/api/self' && r.headers().authorization === `Bearer ${FIXTURE.secondToken}`);
+    await page.getByLabel(t('switchAccount'), { exact: true }).selectOption(FIXTURE.secondToken);
+    await request;
+    const other = await context.newPage();
+    await other.goto(`${origin}/dashboard`);
+    await other.evaluate(() => localStorage.removeItem('onememory.userToken'));
+    await page.locator('.gate-form').waitFor();
+    const response = page.waitForResponse(r => new URL(r.url()).pathname === '/api/self' && r.request().headers().authorization === `Bearer ${FIXTURE.secondToken}`);
+    release();
+    await response;
+    await page.waitForLoadState('networkidle');
+    assert.equal(await stored(page, USER_KEY), null);
+    assert.equal(await page.locator('.console-main').count(), 0);
+  });
+  await run('dashboard: session storage failure does not claim a successful switch', async () => {
+    const page = await open('/dashboard', { [USER_KEY]: FIXTURE.userToken, [accountKey]: JSON.stringify(savedAccounts) });
+    await page.locator('.workspace-switch strong').filter({ hasText: FIXTURE.user }).waitFor();
+    await page.evaluate(() => {
+      const original = Storage.prototype.setItem;
+      Storage.prototype.setItem = function(key, value) {
+        if (key === 'onememory.userToken') throw new DOMException('fixture quota', 'QuotaExceededError');
+        return original.call(this, key, value);
+      };
+    });
+    await page.getByLabel(t('switchAccount'), { exact: true }).selectOption(FIXTURE.secondToken);
+    await page.getByRole('status').filter({ hasText: t('sessionStorageFailed') }).waitFor();
+    assert.equal(await stored(page, USER_KEY), FIXTURE.userToken);
+    assert.equal(await page.locator('.workspace-switch strong').textContent(), FIXTURE.user);
+  });
+  await run('dashboard: account list cleanup failure cannot prevent logout', async () => {
+    const page = await open('/dashboard', { [USER_KEY]: FIXTURE.userToken, [accountKey]: JSON.stringify(savedAccounts) });
+    await page.locator('.workspace-switch strong').filter({ hasText: FIXTURE.user }).waitFor();
+    await page.waitForLoadState('networkidle');
+    await page.evaluate(() => {
+      const original = Storage.prototype.setItem;
+      Storage.prototype.setItem = function(key, value) {
+        if (key === 'rsrs.dashboard.accounts') throw new DOMException('fixture quota', 'QuotaExceededError');
+        return original.call(this, key, value);
+      };
+    });
+    await page.locator('.sidebar-bottom').getByRole('button', { name: t('signOut'), exact: true }).click();
+    await page.locator('.gate-form').waitFor();
+    await page.getByRole('status').filter({ hasText: t('accountListFailed') }).waitFor();
+    assert.equal(await stored(page, USER_KEY), null);
+  });
+
   for (const mode of ['dashboard', 'admin']) {
     await run(`${mode}: bare path selects its surface without credentials`, async () => {
       const page = await open(uiPath(mode));

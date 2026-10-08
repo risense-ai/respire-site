@@ -9,6 +9,8 @@ export const FIXTURE = Object.freeze({
   admin: 'fixture-admin',
   password: 'fixture-password-only',
   userToken: 'fixture-user-token',
+  secondUser: 'fixture-second-user',
+  secondToken: 'fixture-second-token',
   adminToken: 'fixture-admin-token',
   email: 'fixture@example.invalid',
   emailCode: '123456',
@@ -33,11 +35,13 @@ export async function startFixtureApi({ frontend } = {}) {
   const requests = [];
   const unexpected = [];
   const userAuth = await authPayload(FIXTURE.user, FIXTURE.password);
+  const secondAuth = await authPayload(FIXTURE.secondUser, FIXTURE.password);
   const adminAuth = await authPayload(FIXTURE.admin, FIXTURE.password);
   const state = {};
   function reset() {
     Object.assign(state, {
       failures: new Map(),
+      selfGates: new Map(),
       userTotp: false,
       adminTotp: false,
       registered: false,
@@ -98,14 +102,14 @@ export async function startFixtureApi({ frontend } = {}) {
       }
       if (method === 'POST' && ['/login', '/admin/login'].includes(path)) {
         const admin = path.startsWith('/admin');
-        const auth = admin ? adminAuth : userAuth;
+        const auth = admin ? adminAuth : body.user === secondAuth.user ? secondAuth : userAuth;
         assert.equal(request.headers['content-type'], 'application/json');
         assert.equal(request.headers.authorization, undefined, 'Login must not reuse stored bearer tokens');
         if (body.user !== auth.user || body.pass_hash !== auth.pass_hash) return json(401, { error: 'fixture invalid credentials' });
         assert.equal(body.password, undefined, 'Passwords must be hashed before transit');
         if (!admin) assert.equal(body.device_name, 'dashboard');
         if (state[admin ? 'adminTotp' : 'userTotp']) return json(200, { totp_required: true, ticket: state[admin ? 'adminTicket' : 'userTicket'] });
-        return json(200, { token: admin ? FIXTURE.adminToken : FIXTURE.userToken });
+        return json(200, { token: admin ? FIXTURE.adminToken : auth === secondAuth ? FIXTURE.secondToken : FIXTURE.userToken });
       }
       if (method === 'POST' && ['/login/totp', '/admin/login/totp'].includes(path)) {
         const admin = path.startsWith('/admin');
@@ -126,9 +130,13 @@ export async function startFixtureApi({ frontend } = {}) {
         return json(200, { token: FIXTURE.userToken });
       }
       const admin = path.startsWith('/admin/');
-      const expectedToken = admin ? FIXTURE.adminToken : FIXTURE.userToken;
+      const second = request.headers.authorization === `Bearer ${FIXTURE.secondToken}`;
+      const expectedToken = admin ? FIXTURE.adminToken : second ? FIXTURE.secondToken : FIXTURE.userToken;
       if (request.headers.authorization !== `Bearer ${expectedToken}`) return json(admin ? 403 : 401, { error: admin ? 'admin token required' : 'fixture expired session' });
-      if (method === 'GET' && path === '/api/self') return json(200, { user: FIXTURE.user, active: state.blobs.size });
+      if (method === 'GET' && path === '/api/self') {
+        await state.selfGates.get(expectedToken);
+        return json(200, { user: second ? FIXTURE.secondUser : FIXTURE.user, active: state.blobs.size });
+      }
       if (method === 'GET' && path === '/api/self/sessions') return json(200, { sessions: [{ id: 'fixture-session', device_name: 'fixture-browser', created_at: '2026-01-01T00:00:00Z', current: true }] });
       if (method === 'GET' && path === '/api/self/keys') return json(200, { email: state.email, email_verified: state.emailVerified, totp: state.userTotp });
       if (path === '/api/self/vault') {

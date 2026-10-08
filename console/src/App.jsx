@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Gate } from './Gate.jsx';
 import { Shell } from './Shell.jsx';
 import {
@@ -42,38 +42,50 @@ function Console({ admin }) {
   const [adding, setAdding] = useState(false);
   const [switching, setSwitching] = useState(false);
   const [checked, setChecked] = useState(!readToken(key));
+  const entryGeneration = useRef(0);
   const setToken = (value, superPass, secretKey) => {
+    const previous = readToken(key);
+    if (!writeToken(key, value)) throw new Error(t('sessionStorageFailed'));
+    entryGeneration.current += 1;
     if (!admin && !value) {
-      setAccounts(removeAccount(readToken(key)));
       writeSuper('');
       writeSecret('');
+      // Account-list cleanup cannot undo a successful logout.
+      try { setAccounts(removeAccount(previous)); }
+      catch { setHint(t('accountListFailed')); }
     }
-    writeToken(key, value);
     if (superPass) writeSuper(superPass);
     if (secretKey) writeSecret(secretKey);
     setTokenState(value);
   };
   async function enterAccount(value, superPass, secretKey) {
+    const generation = ++entryGeneration.current;
+    const previous = readToken(key);
     const info = await api('/api/self', { token: value });
+    if (generation !== entryGeneration.current || readToken(key) !== previous) return false;
     if (!info.user) throw new Error('Account identity missing');
     setAccounts(saveAccount(info.user, value));
     writeSuper('');
     writeSecret('');
     setToken(value, superPass, secretKey);
     setAdding(false);
+    return true;
   }
   async function switchAccount(account) {
     if (switching || account.token === token) return;
     setSwitching(true);
     try {
-      await enterAccount(account.token);
-      location.hash = '/memories';
+      if (await enterAccount(account.token)) location.hash = '/memories';
     } catch (error) {
       setHint(error.message);
-      if (error.status === 401 || error.status === 403) setAccounts(removeAccount(account.token));
+      if (error.status === 401 || error.status === 403) {
+        try { setAccounts(removeAccount(account.token)); }
+        catch { setHint(t('accountListFailed')); }
+      }
     } finally { setSwitching(false); }
   }
   function addAccount() {
+    entryGeneration.current += 1;
     writeSuper('');
     writeSecret('');
     setAdding(true);
@@ -82,6 +94,8 @@ function Console({ admin }) {
     if (admin) return;
     const changed = (event) => {
       if (event.key === USER_KEY) {
+        entryGeneration.current += 1;
+        setSwitching(false);
         setChecked(false);
         setTokenState(readToken(USER_KEY));
         setAdding(false);
@@ -129,19 +143,24 @@ function Console({ admin }) {
     return <div className="gate-page" style={{ padding: 48 }}><p>{t('checkingLogin')}</p></div>;
   }
   if (!token || adding) {
+    const gateGeneration = entryGeneration.current;
     return (
       <>
         <Gate
           admin={admin}
           notify={(t) => { setHint(t); window.setTimeout(() => setHint(''), 3500); }}
-          onEnter={({ token: value, superPass, secretKey }) => admin ? setToken(value) : enterAccount(value, superPass, secretKey)}
+          onEnter={({ token: value, superPass, secretKey }) => {
+            if (gateGeneration !== entryGeneration.current) return false;
+            return admin ? setToken(value) : enterAccount(value, superPass, secretKey);
+          }}
         />
-        {adding && <button type="button" className="gate-link" onClick={() => setAdding(false)}>{t('cancel')}</button>}
+        {adding && <button type="button" className="gate-link" onClick={() => { entryGeneration.current += 1; setAdding(false); }}>{t('cancel')}</button>}
         <div className={`toast ${hint ? 'visible' : ''}`} role="status">{hint}</div>
       </>
     );
   }
   return (
+    <>
     <Shell
       key={token}
       admin={admin}
@@ -157,7 +176,9 @@ function Console({ admin }) {
         }
         setToken(value);
       }}
-      onLogout={() => setToken('')}
+      onLogout={() => { try { setToken(''); } catch (error) { setHint(error.message); } }}
     />
+    <div className={`toast ${hint ? 'visible' : ''}`} role="status">{hint}</div>
+    </>
   );
 }
