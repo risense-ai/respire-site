@@ -7,6 +7,8 @@ import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { promisify } from 'node:util';
 import { chromium } from 'playwright';
+import jsQR from 'jsqr';
+import { PNG } from 'pngjs';
 import { decryptItem, deriveDataKeys, unwrapUrk, generateSecretKey, wrapVaultV4 } from '../src/crypto.js';
 import { t } from '../src/i18n.js';
 import { FIXTURE, startFixtureApi, closeServer, listen } from './fixture-api.mjs';
@@ -185,6 +187,43 @@ try {
     assert.equal(await stored(page, USER_KEY), '');
     assert.deepEqual(JSON.parse(await stored(page, accountKey)), savedAccounts.slice(0, 1));
   });
+  await run('dashboard: page-memory unlock survives switching but not lock, reload or logout', async () => {
+    const recovery = generateSecretKey();
+    api.state.vault = await wrapVaultV4(recovery);
+    const page = await open('/dashboard', { [USER_KEY]: FIXTURE.userToken, [accountKey]: JSON.stringify(savedAccounts), 'rsrs.superPass': recovery, 'rsrs.superPassAt': String(Date.now()) });
+    await page.locator('.memory-collection').waitFor();
+    const select = page.getByLabel(t('switchAccount'), { exact: true });
+    const swap = async token => {
+      await select.selectOption(token);
+      await page.locator('.workspace-switch strong').filter({ hasText: token === FIXTURE.userToken ? FIXTURE.user : FIXTURE.secondUser }).waitFor();
+    };
+    await swap(FIXTURE.secondToken);
+    await page.locator('.locked-state').waitFor();
+    await swap(FIXTURE.userToken);
+    await page.locator('.memory-collection').waitFor();
+    assert.equal(await stored(page, 'rsrs.superPass'), '', 'Restoring derived keys must not persist the recovery code');
+    assert.equal(await stored(page, 'rsrs.secretKey'), '');
+    await page.reload();
+    await page.locator('.locked-state').waitFor();
+    const unlock = async () => {
+      await page.getByRole('button', { name: t('unlockMemory'), exact: true }).click();
+      await page.getByRole('dialog').getByLabel(t('labelSuperA3'), { exact: true }).fill(recovery);
+      await page.getByRole('dialog').getByRole('button', { name: t('unlockView'), exact: true }).click();
+      await page.getByRole('dialog').waitFor({ state: 'hidden' });
+      await page.locator('.memory-collection').waitFor();
+    };
+    await unlock();
+    await page.getByRole('button', { name: t('lock'), exact: true }).click();
+    await swap(FIXTURE.secondToken);
+    await swap(FIXTURE.userToken);
+    await page.locator('.locked-state').waitFor();
+    await unlock();
+    await page.locator('.sidebar-bottom').getByRole('button', { name: t('signOut'), exact: true }).click();
+    await enterCredentials(page);
+    await submit(page);
+    await page.locator('.locked-state').waitFor();
+  });
+
   await run('dashboard: add another login retains both sessions without passwords or keys', async () => {
     const page = await open('/dashboard', { [USER_KEY]: FIXTURE.userToken });
     await page.locator('.workspace-switch strong').filter({ hasText: FIXTURE.user }).waitFor();
@@ -500,6 +539,47 @@ try {
     await page.getByText(t('verified'), { exact: true }).waitFor();
   });
 
+  for (const mode of ['dashboard', 'admin']) {
+    await run(`${mode}: local QR binding, invalid code retry and secret cleanup`, async () => {
+      const page = await open(`/${mode}#/security`, bothTokens);
+      await page.locator('.security-tabs').getByRole('button', { name: t('twoFactor'), exact: true }).click();
+      const prefix = mode === 'admin' ? '/admin' : '/api/self';
+      await waitForApi(page, `${prefix}/totp/begin`, 'POST', () => page.getByRole('button', { name: t('startBind'), exact: true }).click());
+      const image = page.getByRole('img', { name: t('totpQrAlt'), exact: true });
+      await image.waitFor();
+      const source = await image.getAttribute('src');
+      assert.ok(source.startsWith('data:image/png;base64,'), 'QR must be generated locally');
+      const png = PNG.sync.read(Buffer.from(source.split(',')[1], 'base64'));
+      const decoded = jsQR(new Uint8ClampedArray(png.data), png.width, png.height);
+      assert.ok(decoded, 'QR must be scannable');
+      const uri = new URL(decoded.data);
+      assert.equal(uri.protocol, 'otpauth:');
+      assert.equal(uri.searchParams.get('secret'), await page.locator('.setup-key code').textContent());
+      assert.equal(uri.searchParams.get('issuer'), 'respire');
+      assert.equal(uri.searchParams.get('period'), '30');
+      assert.equal(uri.searchParams.get('digits'), '6');
+      await page.setViewportSize({ width: 375, height: 812 });
+      const box = await image.boundingBox();
+      assert.ok(box.x >= 0 && box.x + box.width <= 375, 'QR fits a mobile viewport');
+      const code = page.getByLabel(t('totpCode'), { exact: true });
+      const confirm = page.getByRole('button', { name: t('confirmOn'), exact: true });
+      await code.fill('000000');
+      await waitForApi(page, `${prefix}/totp/confirm`, 'POST', () => confirm.click(), 400);
+      await assertAlert(page, 'fixture invalid second factor');
+      assert.equal(await image.count(), 1);
+      await code.fill(FIXTURE.totpCode);
+      await waitForApi(page, `${prefix}/totp/confirm`, 'POST', () => confirm.click());
+      await page.getByRole('heading', { name: t('totpBoundTitle'), exact: true }).waitFor();
+      assert.equal(await image.count(), 0);
+      assert.equal(await page.locator('.setup-key').count(), 0);
+      assert.equal(await stored(page, USER_KEY), FIXTURE.userToken);
+      assert.equal(await stored(page, ADMIN_KEY), FIXTURE.adminToken);
+      await page.reload();
+      await page.getByRole('button', { name: t('unbindTotp'), exact: true }).first().waitFor();
+      assert.equal(await image.count(), 0);
+    });
+  }
+
   await run('dashboard: TOTP unbind retries preserve the session and binding state', async () => {
     api.state.userTotp = true;
     const page = await open('/dashboard#/security', bothTokens);
@@ -699,6 +779,21 @@ try {
     await waitForApi(page, '/api/self/memories', 'GET', () => page.getByRole('button', { name: t('pullLatest'), exact: true }).click());
     assert.equal(api.requests.filter(r => r.path === '/api/self/vault').length, vaultReads, 'Pull latest must retain the unlocked controller without requesting the vault or saved key again');
     await page.evaluate(value => localStorage.setItem('rsrs.superPass', value), recovery);
+    const collection = page.locator('.memory-collection');
+    const beforeSync = await collection.boundingBox();
+    let release;
+    api.state.memoriesGate = new Promise(resolve => { release = resolve; });
+    const response = page.waitForResponse(r => new URL(r.url()).pathname === '/api/self/memories');
+    await page.getByRole('button', { name: t('pullLatest'), exact: true }).click();
+    try {
+      await page.locator('.memory-tip').waitFor();
+      assert.equal(await page.locator('.memory-tip').evaluate(el => getComputedStyle(el).position), 'fixed');
+      assert.equal((await collection.boundingBox()).y, beforeSync.y, 'Sync tip must not move the collection');
+      assert.ok(!(await page.locator('.memory-tip').textContent()).includes('memoryLoading'));
+    } finally { release(); api.state.memoriesGate = null; }
+    await response;
+    await page.locator('.memory-tip').waitFor({ state: 'hidden' });
+    assert.equal((await collection.boundingBox()).y, beforeSync.y, 'Removing sync tip must not move the collection');
     const pagerIds = Array.from({ length: 24 }, (_, n) => `fixture-pager-${n}`);
     for (const id of pagerIds) api.state.blobs.set(id, { ...saved, id, revision: ++api.state.revision });
     await waitForApi(page, '/api/self/memories', 'GET', () => page.getByRole('button', { name: t('pullLatest'), exact: true }).click());

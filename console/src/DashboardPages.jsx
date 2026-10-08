@@ -12,6 +12,7 @@ import { MemorySync } from './memorySync.js';
 import { Security } from './Security.jsx';
 import { buildIndex, childrenOf, subtreeCount, diaryDays, visibleRows, ROOT_ID, DIARY_ID } from './treeModel.js';
 import { t, getLocale, kindLabel } from './i18n.js';
+import { readUnlockSession, saveUnlockSession, dropUnlockSession } from './unlockSession.js';
 
 /** Normalize tags: CLI payloads may use CSV, while browser editing uses arrays. */
 function toTagList(tags) {
@@ -218,16 +219,25 @@ export function DashboardPages({
       });
   }, [page, token, tick]);
 
-  const unlockMemories = async (pass, secret) => {
+  const unlockMemories = async (pass, secret, session) => {
     const generation = ++unlockGeneration.current;
     memorySyncRef.current?.close();
     const vault = await api('/api/self/vault', { token });
     const v = Number(vault.version) || 0;
-    if (v >= 4 && !pass) throw new Error(t('needSuper'));
-    if (v === 3 && !pass) throw new Error(t('needSuperV3'));
-    if (v === 3 && !secret) throw new Error(t('needSecretV3'));
-    const urk = await unwrapUrk(pass, secret, vault);
-    const dataKey = await deriveDataKeys(urk, vault.wrapped_urk.startsWith('rsrs:v1:'));
+    let dataKey;
+    if (session) {
+      if (session.vault !== JSON.stringify(vault)) {
+        dropUnlockSession(token);
+        throw new Error(t('pleaseUnlock'));
+      }
+      dataKey = session.dataKey;
+    } else {
+      if (v >= 4 && !pass) throw new Error(t('needSuper'));
+      if (v === 3 && !pass) throw new Error(t('needSuperV3'));
+      if (v === 3 && !secret) throw new Error(t('needSecretV3'));
+      const urk = await unwrapUrk(pass, secret, vault);
+      dataKey = await deriveDataKeys(urk, vault.wrapped_urk.startsWith('rsrs:v1:'));
+    }
     const decryptKey = {
       legacy: await crypto.subtle.importKey('raw', dataKey.legacy, 'AES-GCM', false, ['decrypt']),
       current: await crypto.subtle.importKey('raw', dataKey.current, 'AES-GCM', false, ['decrypt']),
@@ -235,8 +245,10 @@ export function DashboardPages({
     if (generation !== unlockGeneration.current || readToken(USER_KEY) !== token) {
       throw new DOMException('Unlock superseded', 'AbortError');
     }
-    writeSuper(pass);
-    if (v === 3 && secret) writeSecret(secret);
+    if (!session) {
+      writeSuper(pass);
+      if (v === 3 && secret) writeSecret(secret);
+    }
     dataKeyRef.current = dataKey;
     setLoadError('');
     let firstResolve;
@@ -274,6 +286,7 @@ export function DashboardPages({
             return [...next.values()];
           });
           setLocked(false);
+          saveUnlockSession(token, vault, dataKey);
           if (!displayed) {
             displayed = true;
             firstResolve();
@@ -315,6 +328,7 @@ export function DashboardPages({
   // Locking clears key material and invalidates in-flight sync by dataKeyRef identity.
   // Never render returned plaintext after the user locks the view.
   const lockMemories = () => {
+    dropUnlockSession(token);
     unlockGeneration.current++;
     memorySyncRef.current?.close();
     memorySyncRef.current = null;
@@ -357,11 +371,12 @@ export function DashboardPages({
   useEffect(() => {
     if (page !== 'memories') return;
     if (items !== null) return;
+    const session = readUnlockSession(token);
     const saved = readSuper();
-    if (!saved) return;
+    if (!session && !saved) return;
     // Saved recovery codes expire after three days; request manual entry instead of auto-unlocking.
-    if (!superFresh()) { setLocked(true); return; }
-    unlockMemories(saved, readSecret()).catch((e) => {
+    if (!session && !superFresh()) { setLocked(true); return; }
+    unlockMemories(saved, readSecret(), session).catch((e) => {
       if (e.name === 'AbortError') return;
       setLocked(true);
       const why = String(e.message || e);
@@ -588,8 +603,10 @@ export function DashboardPages({
         ) : (
           <>
             {emptyVault && !syncing && !loadError && <EmptyInstallHint notify={notify} />}
-            {loadError && <Note>{loadError}</Note>}
-            {syncing && <Note>{t('memoryLoading', { n: (items || []).length })}</Note>}
+            {(loadError || syncing) && <div className="memory-tip" role={loadError ? 'alert' : 'status'}>
+              {loadError ? <WarningCircle size={20} /> : <ArrowClockwise size={20} />}
+              <span>{loadError || t('memoryLoading', { n: (items || []).length })}</span>
+            </div>}
             <div className="memory-status">
               <span><CloudCheck size={22} />{t('cloudReady')}</span>
               <span>{t('nMemories', { n: (items || []).length })}</span>

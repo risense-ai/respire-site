@@ -42,6 +42,7 @@ export async function startFixtureApi({ frontend } = {}) {
     Object.assign(state, {
       failures: new Map(),
       selfGates: new Map(),
+      memoriesGate: null,
       userTotp: false,
       adminTotp: false,
       adminRole: 'owner',
@@ -173,6 +174,14 @@ export async function startFixtureApi({ frontend } = {}) {
         state.github = { bound: false };
         return json(200, state.github);
       }
+      if (['/api/self/totp/begin', '/admin/totp/begin'].includes(path) && method === 'POST') {
+        return json(200, { secret: 'JBSWY3DPEHPK3PXP', otpauth: 'otpauth://totp/respire:fixture?secret=JBSWY3DPEHPK3PXP&issuer=respire&period=30&digits=6' });
+      }
+      if (['/api/self/totp/confirm', '/admin/totp/confirm'].includes(path) && method === 'POST') {
+        if (body.code !== FIXTURE.totpCode) return json(400, { error: 'fixture invalid second factor' });
+        state[path.startsWith('/admin') ? 'adminTotp' : 'userTotp'] = true;
+        return json(200, { ok: true });
+      }
       if (path === '/api/self/totp/disable' && method === 'POST') {
         if (body.code !== FIXTURE.totpCode) return json(400, { error: 'fixture invalid second factor' });
         state.userTotp = false;
@@ -212,6 +221,7 @@ export async function startFixtureApi({ frontend } = {}) {
         return json(200, { epoch: 'fixture-epoch', protocols: [1, 2] });
       }
       if (method === 'GET' && path === '/api/self/memories') {
+        await state.memoriesGate;
         const after = Number(url.searchParams.get('after'));
         const until = Number(url.searchParams.get('until') ?? state.revision);
         const rows = [...state.blobs.values()].filter(blob => blob.revision > after && blob.revision <= until)

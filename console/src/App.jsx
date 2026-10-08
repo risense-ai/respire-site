@@ -12,6 +12,7 @@ import { consoleRoute } from './consoleRoute.js';
 import { t } from './i18n.js';
 import { readAccounts, saveAccount, removeAccount } from './accounts.js';
 import { useI18n } from './ui.jsx';
+import { dropUnlockSession, clearUnlockSessions } from './unlockSession.js';
 
 function pagePath() {
   return window.location.pathname.replace(/\/+$/, '') || '/';
@@ -60,6 +61,7 @@ function Console({ admin }) {
     if (!writeToken(key, value)) throw new Error(t('sessionStorageFailed'));
     entryGeneration.current += 1;
     if (!admin && !value) {
+      dropUnlockSession(previous);
       writeSuper('');
       writeSecret('');
       // Account-list cleanup cannot undo a successful logout.
@@ -91,6 +93,7 @@ function Console({ admin }) {
     } catch (error) {
       setHint(error.message);
       if (error.status === 401 || error.status === 403) {
+        dropUnlockSession(account.token);
         try { setAccounts(removeAccount(account.token)); }
         catch { setHint(t('accountListFailed')); }
       }
@@ -106,6 +109,7 @@ function Console({ admin }) {
     if (admin) return;
     const changed = (event) => {
       if (event.key === USER_KEY) {
+        clearUnlockSessions();
         entryGeneration.current += 1;
         setSwitching(false);
         setChecked(false);
