@@ -83,10 +83,7 @@ export function Gate({ admin, onEnter, notify }) {
           const superPass = generateSecretKey();
           const vault = await wrapVaultV4(superPass);
           await api('/api/self/vault', { method: 'POST', token: reply.token, body: vault });
-          // Store under the same localStorage key used by api.js SUPER_KEY.
-          try { localStorage.setItem('onememory.superPass', superPass); } catch {}
-          try { localStorage.setItem('onememory.superPassAt', String(Date.now())); } catch {}
-          try { localStorage.removeItem('onememory.secretKey'); } catch {}
+          // Save unlock material only after the new account becomes active.
           setIssued({ token: reply.token, superPass });
           setStep(3);
         } catch (err) {
