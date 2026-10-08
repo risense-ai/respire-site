@@ -2,6 +2,8 @@ export const DEFAULT_LOCALE = 'en';
 const STORAGE = 'respire.uiLocale';
 
 const EN = {
+  switchAccount: 'Switch account',
+  addAccount: 'Sign in to another account',
   language: 'Language',
   checkingLogin: 'Checking sign-in…',
   fallbackHint: 'Admin /admin · user /dashboard',
@@ -524,6 +526,8 @@ const EN = {
 };
 
 const ZH = {
+  switchAccount: '切换账号',
+  addAccount: '登录其他账号',
   language: '语言',
   checkingLogin: '正在确认登录…',
   fallbackHint: '后台 /admin，用户 /dashboard',

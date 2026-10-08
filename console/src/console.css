@@ -421,3 +421,7 @@ html[data-theme=dark] .memory-card[data-kind='skill'] { --card-accent:#7aa88f; }
 html[data-theme=dark] .memory-card[data-kind='preference'] { --card-accent:#cf9f66; }
 html[data-theme=dark] .memory-card[data-kind='emotion'] { --card-accent:#cf8484; }
 html[data-theme=dark] .memory-card[data-kind='time'] { --card-accent:#a9a197; }
+
+.account-switch-controls { padding: 0 16px 12px; }
+.account-switch-controls label { display: grid; gap: 6px; }
+.account-switch-controls select { width: 100%; padding: 8px; color: inherit; background: transparent; border: 1px solid currentColor; border-radius: 6px; }

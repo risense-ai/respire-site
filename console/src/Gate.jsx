@@ -27,7 +27,7 @@ export function Gate({ admin, onEnter, notify }) {
   const fail = (e) => setError(e.message || String(e));
 
   const finishUser = (token, superPass, secretKey) => {
-    onEnter({ token, superPass, secretKey });
+    return onEnter({ token, superPass, secretKey });
   };
 
   async function submit(e) {
@@ -97,7 +97,7 @@ export function Gate({ admin, onEnter, notify }) {
         return;
       }
       if (!saved) return setError(t('confirmSuperFirst'));
-      finishUser(issued.token, issued.superPass, undefined);
+      await finishUser(issued.token, issued.superPass, undefined);
       notify(t('accountCreated'));
       return;
     }
@@ -137,7 +137,7 @@ export function Gate({ admin, onEnter, notify }) {
     try {
       if (ticket) {
         const reply = await api('/login/totp', { method: 'POST', body: { ticket, code, device_name: 'dashboard' } });
-        finishUser(reply.token, superpass, undefined);
+        await finishUser(reply.token, superpass, undefined);
         return;
       }
       const payload = await authPayload(user, pass);
@@ -147,7 +147,7 @@ export function Gate({ admin, onEnter, notify }) {
         notify(t('needTotp'));
         return;
       }
-      finishUser(reply.token, superpass, undefined);
+      await finishUser(reply.token, superpass, undefined);
     } catch (err) {
       fail(err);
     } finally {

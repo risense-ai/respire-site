@@ -7,6 +7,7 @@ import {
 import { pathRestToHash } from './hashRoute.js';
 import { consoleRoute } from './consoleRoute.js';
 import { t } from './i18n.js';
+import { readAccounts, saveAccount, removeAccount } from './accounts.js';
 import { useI18n } from './ui.jsx';
 
 function pagePath() {
@@ -37,13 +38,59 @@ function Console({ admin }) {
   const key = admin ? ADMIN_KEY : USER_KEY;
   const [token, setTokenState] = useState(() => readToken(key));
   const [hint, setHint] = useState('');
+  const [accounts, setAccounts] = useState(() => admin ? [] : readAccounts());
+  const [adding, setAdding] = useState(false);
+  const [switching, setSwitching] = useState(false);
   const [checked, setChecked] = useState(!readToken(key));
   const setToken = (value, superPass, secretKey) => {
+    if (!admin && !value) {
+      setAccounts(removeAccount(readToken(key)));
+      writeSuper('');
+      writeSecret('');
+    }
     writeToken(key, value);
     if (superPass) writeSuper(superPass);
     if (secretKey) writeSecret(secretKey);
     setTokenState(value);
   };
+  async function enterAccount(value, superPass, secretKey) {
+    const info = await api('/api/self', { token: value });
+    if (!info.user) throw new Error('Account identity missing');
+    setAccounts(saveAccount(info.user, value));
+    writeSuper('');
+    writeSecret('');
+    setToken(value, superPass, secretKey);
+    setAdding(false);
+  }
+  async function switchAccount(account) {
+    if (switching || account.token === token) return;
+    setSwitching(true);
+    try {
+      await enterAccount(account.token);
+      location.hash = '/memories';
+    } catch (error) {
+      setHint(error.message);
+      if (error.status === 401 || error.status === 403) setAccounts(removeAccount(account.token));
+    } finally { setSwitching(false); }
+  }
+  function addAccount() {
+    writeSuper('');
+    writeSecret('');
+    setAdding(true);
+  }
+  useEffect(() => {
+    if (admin) return;
+    const changed = (event) => {
+      if (event.key === USER_KEY) {
+        setChecked(false);
+        setTokenState(readToken(USER_KEY));
+        setAdding(false);
+      }
+      if (event.key === 'rsrs.dashboard.accounts') setAccounts(readAccounts());
+    };
+    window.addEventListener('storage', changed);
+    return () => window.removeEventListener('storage', changed);
+  }, [admin]);
   useEffect(() => {
     const path = pagePath();
     if (admin && path.startsWith('/admin/')) {
@@ -67,8 +114,10 @@ function Console({ admin }) {
     }
     const probe = admin ? '/admin/me' : '/api/self';
     api(probe, { token })
-      .then(() => {
-        if (readToken(key) === token) setChecked(true);
+      .then((info) => {
+        if (readToken(key) !== token) return;
+        if (!admin && info.user) setAccounts(saveAccount(info.user, token));
+        setChecked(true);
       })
       .catch((err) => {
         if (readToken(key) !== token) return;
@@ -79,14 +128,15 @@ function Console({ admin }) {
   if (!checked) {
     return <div className="gate-page" style={{ padding: 48 }}><p>{t('checkingLogin')}</p></div>;
   }
-  if (!token) {
+  if (!token || adding) {
     return (
       <>
         <Gate
           admin={admin}
           notify={(t) => { setHint(t); window.setTimeout(() => setHint(''), 3500); }}
-          onEnter={({ token: t, superPass, secretKey }) => setToken(t, superPass, secretKey)}
+          onEnter={({ token: value, superPass, secretKey }) => admin ? setToken(value) : enterAccount(value, superPass, secretKey)}
         />
+        {adding && <button type="button" className="gate-link" onClick={() => setAdding(false)}>{t('cancel')}</button>}
         <div className={`toast ${hint ? 'visible' : ''}`} role="status">{hint}</div>
       </>
     );
@@ -96,7 +146,17 @@ function Console({ admin }) {
       key={token}
       admin={admin}
       token={token}
-      onToken={(t) => setToken(t)}
+      accounts={accounts}
+      switching={switching}
+      onSwitchAccount={switchAccount}
+      onAddAccount={addAccount}
+      onToken={(value) => {
+        if (!admin) {
+          const current = accounts.find(account => account.token === token);
+          if (current) setAccounts(saveAccount(current.user, value));
+        }
+        setToken(value);
+      }}
       onLogout={() => setToken('')}
     />
   );
