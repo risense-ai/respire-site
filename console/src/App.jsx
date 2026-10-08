@@ -5,14 +5,15 @@ import { CliAuthorization } from './CliAuthorization.jsx';
 import { GithubCallback } from './GithubCallback.jsx';
 import { initialGithubCallback } from './githubAuth.js';
 import {
-  ADMIN_KEY, USER_KEY, api, onUnauthorized, readToken, writeSecret, writeSuper, writeToken,
+  ADMIN_KEY, USER_KEY, api, onUnauthorized, readToken, writeToken,
 } from './api.js';
+import { unwrapUrk, deriveDataKeys } from './crypto.js';
 import { pathRestToHash } from './hashRoute.js';
 import { consoleRoute } from './consoleRoute.js';
 import { t } from './i18n.js';
 import { readAccounts, saveAccount, removeAccount } from './accounts.js';
 import { useI18n } from './ui.jsx';
-import { dropUnlockSession, clearUnlockSessions } from './unlockSession.js';
+import { dropUnlockSession, clearUnlockSessions, saveUnlockSession } from './unlockSession.js';
 
 function pagePath() {
   return window.location.pathname.replace(/\/+$/, '') || '/';
@@ -56,20 +57,16 @@ function Console({ admin }) {
     window.addEventListener('hashchange', changed);
     return () => window.removeEventListener('hashchange', changed);
   }, []);
-  const setToken = (value, superPass, secretKey) => {
+  const setToken = (value) => {
     const previous = readToken(key);
     if (!writeToken(key, value)) throw new Error(t('sessionStorageFailed'));
     entryGeneration.current += 1;
     if (!admin && !value) {
       dropUnlockSession(previous);
-      writeSuper('');
-      writeSecret('');
       // Account-list cleanup cannot undo a successful logout.
       try { setAccounts(removeAccount(previous)); }
       catch { setHint(t('accountListFailed')); }
     }
-    if (superPass) writeSuper(superPass);
-    if (secretKey) writeSecret(secretKey);
     setTokenState(value);
   };
   async function enterAccount(value, superPass, secretKey) {
@@ -78,10 +75,18 @@ function Console({ admin }) {
     const info = await api('/api/self', { token: value });
     if (generation !== entryGeneration.current || readToken(key) !== previous) return false;
     if (!info.user) throw new Error('Account identity missing');
+    let vault;
+    let dataKey;
+    if (superPass) {
+      vault = await api('/api/self/vault', { token: value });
+      const urk = await unwrapUrk(superPass, secretKey, vault);
+      try { dataKey = await deriveDataKeys(urk, vault.wrapped_urk.startsWith('rsrs:v1:')); }
+      finally { urk.fill(0); }
+      if (generation !== entryGeneration.current || readToken(key) !== previous) return false;
+    }
     setAccounts(saveAccount(info.user, value));
-    writeSuper('');
-    writeSecret('');
-    setToken(value, superPass, secretKey);
+    setToken(value);
+    if (dataKey) saveUnlockSession(value, vault, dataKey);
     setAdding(false);
     return true;
   }
@@ -101,8 +106,6 @@ function Console({ admin }) {
   }
   function addAccount() {
     entryGeneration.current += 1;
-    writeSuper('');
-    writeSecret('');
     setAdding(true);
   }
   useEffect(() => {
