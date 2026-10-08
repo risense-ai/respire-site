@@ -5,6 +5,7 @@ import { authPayload } from './crypto.js';
 import { api } from './api.js';
 import { t } from './i18n.js';
 import { beginGithub } from './githubAuth.js';
+import QRCode from 'qrcode';
 
 export function Security({ admin, token, me, notify, onReload, open, onLogout }) {
   useI18n();
@@ -17,6 +18,7 @@ export function Security({ admin, token, me, notify, onReload, open, onLogout })
   const [emailSent, setEmailSent] = useState(false);
   const [emailBusy, setEmailBusy] = useState(false);
   const [totpSecret, setTotpSecret] = useState('');
+  const [totpQr, setTotpQr] = useState('');
   const [totpCode, setTotpCode] = useState('');
   const [totpBusy, setTotpBusy] = useState(false);
   const totp = !!me?.totp;
@@ -166,13 +168,19 @@ export function Security({ admin, token, me, notify, onReload, open, onLogout })
               setTotpBusy(true); setError('');
               try {
                 const r = await api(totpBegin, { method: 'POST', token });
+                const qr = await QRCode.toDataURL(r.otpauth, { width: 256, margin: 4, errorCorrectionLevel: 'M' });
                 setTotpSecret(r.secret);
+                setTotpQr(qr);
                 setTotpCode('');
               } catch (err) { setError(err.message); }
               finally { setTotpBusy(false); }
             }}>{t('startBind')}</Button>
           </div>}
-          {totpSecret ? <div className="setup-key"><code>{totpSecret}</code></div> : null}
+          {!totp && totpSecret ? <div className="totp-setup">
+            <p>{t('totpScanHelp')}</p>
+            <img className="totp-qr" src={totpQr} width="256" height="256" alt={t('totpQrAlt')} />
+            <div className="setup-key"><code>{totpSecret}</code></div>
+          </div> : null}
           <Badge tone={totp ? 'green' : 'neutral'}>{totp ? t('totpOn') : t('totpOff')}</Badge>
           {(totp || totpSecret) && <label className="field">{t('totpCode')}<input disabled={totpBusy} inputMode="numeric" autoComplete="one-time-code" maxLength={6} value={totpCode} onChange={(e) => setTotpCode(e.target.value)} /></label>}
           {error && <p className="form-error" role="alert">{error}</p>}
@@ -186,6 +194,7 @@ export function Security({ admin, token, me, notify, onReload, open, onLogout })
                 notify(t('totpOnOk'));
                 setError('');
                 setTotpSecret('');
+                setTotpQr('');
                 setTotpCode('');
               } catch (err) { setError(err.message); }
               finally { setTotpBusy(false); }
@@ -199,6 +208,7 @@ export function Security({ admin, token, me, notify, onReload, open, onLogout })
                 notify(t('totpOffOk'));
                 setError('');
                 setTotpSecret('');
+                setTotpQr('');
                 setTotpCode('');
               } catch (err) { setError(err.message); }
               finally { setTotpBusy(false); }

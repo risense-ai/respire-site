@@ -20,6 +20,8 @@ The dashboard reads a bounded immutable snapshot, renders decrypted batches
 as pages arrive, then follows per-account incremental revisions. Pull latest,
 polling and edits share that incremental stream. Loading/interruption messages
 make clear when search only covers the currently loaded portion.
+Sync and interruption tips float above the page without shifting the memory
+tree or list. The status row continues to show the current sync state.
 
 IndexedDB stores only ciphertext and an atomic page cursor. API origin and
 authenticated username scope the cache; epoch or vault changes invalidate it.
@@ -28,3 +30,12 @@ Keys and plaintext stay in memory, and locking/sign-out cancels pending work.
 If browser storage is blocked or full, a visible notice reports it and the
 current session continues without persistent caching. No legacy API fallback
 is attempted when the paired Server endpoint has not been deployed.
+
+## Authenticator binding
+
+Dashboard and Admin security pages show a locally generated QR code alongside
+the manual TOTP key. Scan it with an authenticator, then enter its six-digit
+code to confirm binding. The QR uses the server-provided `otpauth` URI and does
+not contact a third-party image service. Binding clears the displayed setup
+material and preserves the session; unbinding requires a current code and
+also keeps the account signed in.

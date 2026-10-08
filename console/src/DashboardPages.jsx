@@ -588,8 +588,10 @@ export function DashboardPages({
         ) : (
           <>
             {emptyVault && !syncing && !loadError && <EmptyInstallHint notify={notify} />}
-            {loadError && <Note>{loadError}</Note>}
-            {syncing && <Note>{t('memoryLoading', { n: (items || []).length })}</Note>}
+            {(loadError || syncing) && <div className="memory-tip" role={loadError ? 'alert' : 'status'}>
+              {loadError ? <WarningCircle size={20} /> : <ArrowClockwise size={20} />}
+              <span>{loadError || t('memoryLoading', { n: (items || []).length })}</span>
+            </div>}
             <div className="memory-status">
               <span><CloudCheck size={22} />{t('cloudReady')}</span>
               <span>{t('nMemories', { n: (items || []).length })}</span>
