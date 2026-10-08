@@ -187,6 +187,43 @@ try {
     assert.equal(await stored(page, USER_KEY), '');
     assert.deepEqual(JSON.parse(await stored(page, accountKey)), savedAccounts.slice(0, 1));
   });
+  await run('dashboard: page-memory unlock survives switching but not lock, reload or logout', async () => {
+    const recovery = generateSecretKey();
+    api.state.vault = await wrapVaultV4(recovery);
+    const page = await open('/dashboard', { [USER_KEY]: FIXTURE.userToken, [accountKey]: JSON.stringify(savedAccounts), 'rsrs.superPass': recovery, 'rsrs.superPassAt': String(Date.now()) });
+    await page.locator('.memory-collection').waitFor();
+    const select = page.getByLabel(t('switchAccount'), { exact: true });
+    const swap = async token => {
+      await select.selectOption(token);
+      await page.locator('.workspace-switch strong').filter({ hasText: token === FIXTURE.userToken ? FIXTURE.user : FIXTURE.secondUser }).waitFor();
+    };
+    await swap(FIXTURE.secondToken);
+    await page.locator('.locked-state').waitFor();
+    await swap(FIXTURE.userToken);
+    await page.locator('.memory-collection').waitFor();
+    assert.equal(await stored(page, 'rsrs.superPass'), '', 'Restoring derived keys must not persist the recovery code');
+    assert.equal(await stored(page, 'rsrs.secretKey'), '');
+    await page.reload();
+    await page.locator('.locked-state').waitFor();
+    const unlock = async () => {
+      await page.getByRole('button', { name: t('unlockMemory'), exact: true }).click();
+      await page.getByRole('dialog').getByLabel(t('labelSuperA3'), { exact: true }).fill(recovery);
+      await page.getByRole('dialog').getByRole('button', { name: t('unlockView'), exact: true }).click();
+      await page.getByRole('dialog').waitFor({ state: 'hidden' });
+      await page.locator('.memory-collection').waitFor();
+    };
+    await unlock();
+    await page.getByRole('button', { name: t('lock'), exact: true }).click();
+    await swap(FIXTURE.secondToken);
+    await swap(FIXTURE.userToken);
+    await page.locator('.locked-state').waitFor();
+    await unlock();
+    await page.locator('.sidebar-bottom').getByRole('button', { name: t('signOut'), exact: true }).click();
+    await enterCredentials(page);
+    await submit(page);
+    await page.locator('.locked-state').waitFor();
+  });
+
   await run('dashboard: add another login retains both sessions without passwords or keys', async () => {
     const page = await open('/dashboard', { [USER_KEY]: FIXTURE.userToken });
     await page.locator('.workspace-switch strong').filter({ hasText: FIXTURE.user }).waitFor();

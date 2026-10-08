@@ -30,6 +30,12 @@ Keys and plaintext stay in memory, and locking/sign-out cancels pending work.
 If browser storage is blocked or full, a visible notice reports it and the
 current session continues without persistent caching. No legacy API fallback
 is attempted when the paired Server endpoint has not been deployed.
+Successfully unlocked accounts keep their derived keys in the current page's
+memory so switching back does not require another recovery-code entry. Each
+token has a separate unlock session; switching discards the plaintext view.
+Explicit lock and sign-out discard the corresponding keys, and reloading or
+closing the page discards this in-memory cache. It is never written to browser
+storage. The existing saved recovery-code preference remains separate.
 
 ## Authenticator binding
 
