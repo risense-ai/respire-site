@@ -257,6 +257,60 @@ try {
     assert.equal(await stored(page, USER_KEY), FIXTURE.userToken);
   });
 
+  await run('dashboard: blocked sessionStorage reads do not break recovery controls', async () => {
+    const page = await open('/dashboard', { [USER_KEY]: FIXTURE.userToken });
+    await page.locator('.workspace-switch strong').waitFor();
+    await page.evaluate(() => {
+      const read = Storage.prototype.getItem;
+      Storage.prototype.getItem = function(key) {
+        if (this === sessionStorage) throw new DOMException('fixture blocked', 'SecurityError');
+        return read.call(this, key);
+      };
+    });
+    await page.goto(`${origin}/dashboard#/keys`);
+    await page.getByText(t('memoryOnlyDescription'), { exact: true }).first().waitFor();
+    assert.equal(await stored(page, USER_KEY), FIXTURE.userToken);
+  });
+  await run('dashboard: token rotation preserves only the rotating account unlock session', async () => {
+    const recovery = generateSecretKey();
+    api.state.vault = await wrapVaultV4(recovery);
+    const page = await open('/dashboard', { [USER_KEY]: FIXTURE.userToken, [accountKey]: JSON.stringify(savedAccounts) });
+    const swap = async token => {
+      await page.getByLabel(t('switchAccount'), { exact: true }).selectOption(token);
+      await page.waitForFunction(token => localStorage.getItem('rsrs.userToken') === token, token);
+    };
+    const unlock = async () => {
+      await page.getByRole('button', { name: t('unlockMemory'), exact: true }).click();
+      const dialog = page.getByRole('dialog');
+      await dialog.getByLabel(t('labelSuperA3'), { exact: true }).fill(recovery);
+      await dialog.getByRole('button', { name: t('unlockView'), exact: true }).click();
+      await dialog.waitFor({ state: 'hidden' });
+      await page.locator('.memory-collection').waitFor();
+    };
+    await unlock();
+    await swap(FIXTURE.secondToken);
+    await unlock();
+    await swap(FIXTURE.userToken);
+    await page.locator('.memory-collection').waitFor();
+    await page.goto(`${origin}/dashboard#/sessions`);
+    await page.getByRole('button', { name: t('rotateToken'), exact: true }).click();
+    await page.waitForFunction(() => localStorage.getItem('rsrs.userToken') === 'fixture-rotated-token');
+    await page.goto(`${origin}/dashboard#/memories`);
+    await page.locator('.memory-collection').waitFor();
+    await assertNoRecoveryStorage(page);
+    await swap(FIXTURE.secondToken);
+    await page.locator('.memory-collection').waitFor();
+    await swap('fixture-rotated-token');
+    await page.locator('.memory-collection').waitFor();
+    await page.getByRole('button', { name: t('lock'), exact: true }).click();
+    await swap(FIXTURE.secondToken);
+    await page.locator('.memory-collection').waitFor();
+    await swap('fixture-rotated-token');
+    await page.locator('.locked-state').waitFor();
+    const accounts = JSON.parse(await stored(page, accountKey));
+    assert.equal(accounts.some(row => row.token === FIXTURE.userToken), false);
+  });
+
   await run('dashboard: add another login retains both sessions without passwords or keys', async () => {
     const page = await open('/dashboard', { [USER_KEY]: FIXTURE.userToken });
     await page.locator('.workspace-switch strong').filter({ hasText: FIXTURE.user }).waitFor();

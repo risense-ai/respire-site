@@ -13,7 +13,7 @@ import { consoleRoute } from './consoleRoute.js';
 import { t } from './i18n.js';
 import { readAccounts, saveAccount, removeAccount } from './accounts.js';
 import { useI18n } from './ui.jsx';
-import { dropUnlockSession, clearUnlockSessions, saveUnlockSession } from './unlockSession.js';
+import { dropUnlockSession, clearUnlockSessions, saveUnlockSession, moveUnlockSession } from './unlockSession.js';
 
 function pagePath() {
   return window.location.pathname.replace(/\/+$/, '') || '/';
@@ -205,6 +205,7 @@ function Console({ admin }) {
           if (current) setAccounts(saveAccount(current.user, value));
         }
         setToken(value);
+        if (!admin) moveUnlockSession(token, value);
       }}
       onLogout={() => { try { setToken(''); } catch (error) { setHint(error.message); } }}
     />

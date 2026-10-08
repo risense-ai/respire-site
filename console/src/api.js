@@ -69,7 +69,15 @@ export function writeToken(key, value) {
 const RECOVERY_KEYS = ['rsrs', 'onememory'].flatMap(prefix =>
   ['superPass', 'secretKey', 'superPassAt'].map(name => `${prefix}.${name}`));
 export function hasLegacyRecovery() {
-  return RECOVERY_KEYS.some(key => localStorage.getItem(key) || sessionStorage.getItem(key));
+  // Storage may be blocked independently. Detection must not break the page;
+  // explicit export and deletion still report their storage errors to the user.
+  for (const name of ['localStorage', 'sessionStorage']) {
+    try {
+      const storage = window[name];
+      if (RECOVERY_KEYS.some(key => storage.getItem(key))) return true;
+    } catch { /* This storage is unavailable; inspect the other one. */ }
+  }
+  return false;
 }
 export function exportLegacyRecovery() {
   const backup = {};
