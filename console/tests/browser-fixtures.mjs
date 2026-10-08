@@ -228,6 +228,27 @@ try {
     await page.locator('.locked-state').waitFor();
   });
 
+  for (const surface of ['dashboard', 'admin']) {
+    await run(`${surface}: remove retired super password slots automatically without changing sessions`, async () => {
+      const page = await open(`/${surface}`, { ...bothTokens,
+        'onememory.superPass': 'synthetic-retired-recovery',
+        'onememory.superPassAt': '12345', 'rsrs.keep-fixture': 'preserved',
+      });
+      await page.locator('.console-main').waitFor();
+      for (const key of ['onememory.superPass', 'onememory.superPassAt']) assert.equal(await stored(page, key), null);
+      assert.equal(await stored(page, USER_KEY), FIXTURE.userToken);
+      assert.equal(await stored(page, ADMIN_KEY), FIXTURE.adminToken);
+      assert.equal(await stored(page, 'rsrs.keep-fixture'), 'preserved');
+      await page.addInitScript(() => {
+        sessionStorage.setItem('onememory.superPass', 'synthetic-retired-recovery');
+        sessionStorage.setItem('onememory.superPassAt', '12345');
+      });
+      await page.reload();
+      await page.locator('.console-main').waitFor();
+      assert.deepEqual(await page.evaluate(() => ['onememory.superPass', 'onememory.superPassAt'].map(key => sessionStorage.getItem(key))), [null, null]);
+    });
+  }
+
   await run('dashboard: legacy recovery requires backup confirmation and is never used to unlock', async () => {
     const recovery = generateSecretKey();
     api.state.vault = await wrapVaultV4(recovery);
@@ -244,12 +265,13 @@ try {
     const backup = await downloadEvent;
     const chunks = [];
     for await (const chunk of await backup.createReadStream()) chunks.push(chunk);
-    assert.equal(JSON.parse(Buffer.concat(chunks).toString())['localStorage:onememory.superPass'], recovery);
+    assert.equal(JSON.parse(Buffer.concat(chunks).toString())['localStorage:rsrs.superPass'], recovery);
     await page.getByRole('button', { name: t('legacyRecoveryClear'), exact: true }).click();
     const dialog = page.getByRole('dialog');
     await dialog.getByRole('button', { name: t('legacyRecoveryClear'), exact: true }).click();
     await dialog.getByRole('alert').waitFor();
-    assert.equal(await stored(page, 'onememory.superPass'), recovery);
+    assert.equal(await stored(page, 'onememory.superPass'), null);
+    assert.equal(await stored(page, 'rsrs.superPass'), recovery);
     await dialog.getByLabel(t('legacyBackupConfirm'), { exact: true }).selectOption('yes');
     await dialog.getByRole('button', { name: t('legacyRecoveryClear'), exact: true }).click();
     await dialog.waitFor({ state: 'hidden' });
