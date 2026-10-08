@@ -36,10 +36,13 @@ token has a separate unlock session; switching discards the plaintext view.
 Explicit lock and sign-out discard the corresponding keys, and reloading or
 closing the page discards this in-memory cache. It is never written to browser
 storage. Super passwords and legacy Secret Keys are never saved or read for
-unlocking. A refresh always requires manual unlocking. The encryption page
-lets users explicitly export historical `rsrs.*` / `onememory.*` recovery-code
+unlocking. A refresh always requires manual unlocking. Dashboard and Admin
+entry automatically removes retired `onememory.superPass` and
+`onememory.superPassAt` slots from local/session storage, as requested. The
+encryption page lets users explicitly export remaining historical `rsrs.*` / `onememory.*` recovery-code
 copies and delete them after confirming their backup. Cleanup preserves login
-tokens, preferences and ciphertext; it never silently deletes a recovery code.
+tokens, preferences and ciphertext. Remaining recovery copies require backup
+confirmation before deletion; the two retired slots are removed automatically.
 
 ## Authenticator binding
 

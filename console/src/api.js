@@ -94,3 +94,16 @@ export function clearLegacyRecovery() {
     for (const key of RECOVERY_KEYS) storage.removeItem(key);
   }
 }
+// Retired plaintext slots are removed on entry, including signed-out pages.
+// Never read or copy their values; keep account sessions and other data intact.
+export function removeRetiredSuperPass() {
+  let cleared = true;
+  for (const name of ['localStorage', 'sessionStorage']) {
+    try {
+      const storage = window[name];
+      storage.removeItem('onememory.superPass');
+      storage.removeItem('onememory.superPassAt');
+    } catch { cleared = false; }
+  }
+  return cleared;
+}

@@ -2,6 +2,7 @@ export const DEFAULT_LOCALE = 'en';
 const STORAGE = 'respire.uiLocale';
 
 const EN = {
+  legacyRecoveryClearFailed: 'Some old recovery copies could not be cleared. Check browser storage permissions.',
   memoryOnlyKeys: 'Page memory only',
   memoryOnlyDescription: 'Recovery codes are never saved. Derived keys stay in this page only. Refreshing or closing it requires unlocking again.',
   pageUnlocked: 'Unlocked in this page',
@@ -556,6 +557,7 @@ const EN = {
 };
 
 const ZH = {
+  legacyRecoveryClearFailed: '部分旧恢复码副本清除失败，请检查浏览器存储权限。',
   memoryOnlyKeys: '仅保留在当前页面内存',
   memoryOnlyDescription: '恢复码不会保存。解密密钥只在当前页面内存中保留，刷新或关闭页面后需重新解锁。',
   pageUnlocked: '当前页面已解锁',

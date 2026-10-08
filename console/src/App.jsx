@@ -5,7 +5,7 @@ import { CliAuthorization } from './CliAuthorization.jsx';
 import { GithubCallback } from './GithubCallback.jsx';
 import { initialGithubCallback } from './githubAuth.js';
 import {
-  ADMIN_KEY, USER_KEY, api, onUnauthorized, readToken, writeToken,
+  ADMIN_KEY, USER_KEY, api, onUnauthorized, readToken, writeToken, removeRetiredSuperPass,
 } from './api.js';
 import { unwrapUrk, deriveDataKeys } from './crypto.js';
 import { pathRestToHash } from './hashRoute.js';
@@ -43,6 +43,9 @@ function Console({ admin }) {
   const key = admin ? ADMIN_KEY : USER_KEY;
   const [token, setTokenState] = useState(() => readToken(key));
   const [hint, setHint] = useState('');
+  useEffect(() => {
+    if (!removeRetiredSuperPass()) setHint(t('legacyRecoveryClearFailed'));
+  }, []);
   const [accounts, setAccounts] = useState(() => admin ? [] : readAccounts());
   const [adding, setAdding] = useState(false);
   const [switching, setSwitching] = useState(false);
