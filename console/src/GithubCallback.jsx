@@ -30,7 +30,7 @@ export function GithubCallback({ grant, token, authorization, onEnter, onDone })
     try { existingVault = await api('/api/self/vault', { token: result.token }); setVault(existingVault); }
     catch (err) { if (err.status === 404) setVault(null); else throw err; }
     // CLI/TUI supplies its recovery code in the terminal, after browser approval.
-    if (authorization && existingVault) onEnter({ token: result.token });
+    if (authorization && existingVault) await onEnter({ token: result.token });
   }
 
   useEffect(() => {
@@ -56,14 +56,14 @@ export function GithubCallback({ grant, token, authorization, onEnter, onDone })
       } else if (issued) {
         if (!saved) throw new Error(t('confirmSuperFirst'));
         await api('/api/self/github/vault', { method: 'POST', token: reply.token, body: vault });
-        onEnter({ token: reply.token, superPass: issued });
+        await onEnter({ token: reply.token, superPass: issued });
       } else if (vault === null) {
         const recovery = generateSecretKey();
         const initialVault = await wrapVaultV4(recovery);
         setVault(initialVault); setIssued(recovery);
       } else {
         await unwrapUrk(superpass, undefined, vault);
-        onEnter({ token: reply.token, superPass: superpass });
+        await onEnter({ token: reply.token, superPass: superpass });
       }
     } catch (err) { setError(err.name === 'OperationError' ? t('githubUnlockFailed') : err.message); }
     finally { setBusy(false); }

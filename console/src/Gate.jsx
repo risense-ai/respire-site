@@ -3,7 +3,7 @@ import { ArrowRight, ShieldCheck, LockKey, Key } from '@phosphor-icons/react';
 import { Button, Badge, Note, LangSwitch, useI18n } from './ui.jsx';
 import { Brand } from './Brand.jsx';
 import { authPayload, deriveSalt, generateSecretKey, wrapVaultV4 } from './crypto.js';
-import { api, writeSecret, writeSuper } from './api.js';
+import { api } from './api.js';
 import { t } from './i18n.js';
 import { beginGithub } from './githubAuth.js';
 
@@ -41,7 +41,7 @@ export function Gate({ admin, authorization = false, onEnter, notify }) {
   }
 
   const finishUser = (token, superPass, secretKey) => {
-    onEnter({ token, superPass, secretKey });
+    return onEnter({ token, superPass, secretKey });
   };
 
   async function submit(e) {
@@ -97,9 +97,7 @@ export function Gate({ admin, authorization = false, onEnter, notify }) {
           const superPass = generateSecretKey();
           const vault = await wrapVaultV4(superPass);
           await api('/api/self/vault', { method: 'POST', token: reply.token, body: vault });
-          // Store under the same localStorage key used by api.js SUPER_KEY.
-          writeSuper(superPass);
-          writeSecret('');
+          // Save unlock material only after the new account becomes active.
           setIssued({ token: reply.token, superPass });
           setStep(3);
         } catch (err) {
@@ -110,8 +108,15 @@ export function Gate({ admin, authorization = false, onEnter, notify }) {
         return;
       }
       if (!saved) return setError(t('confirmSuperFirst'));
-      finishUser(issued.token, issued.superPass, undefined);
-      notify(t('accountCreated'));
+      setBusy(true);
+      try {
+        await finishUser(issued.token, issued.superPass, undefined);
+        notify(t('accountCreated'));
+      } catch (err) {
+        fail(err);
+      } finally {
+        setBusy(false);
+      }
       return;
     }
 
@@ -150,7 +155,7 @@ export function Gate({ admin, authorization = false, onEnter, notify }) {
     try {
       if (ticket) {
         const reply = await api('/login/totp', { method: 'POST', body: { ticket, code, device_name: 'dashboard' } });
-        finishUser(reply.token, superpass, undefined);
+        await finishUser(reply.token, superpass, undefined);
         return;
       }
       const payload = await loginPayload();
@@ -160,7 +165,7 @@ export function Gate({ admin, authorization = false, onEnter, notify }) {
         notify(t('needTotp'));
         return;
       }
-      finishUser(reply.token, superpass, undefined);
+      await finishUser(reply.token, superpass, undefined);
     } catch (err) {
       fail(err);
     } finally {

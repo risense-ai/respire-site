@@ -67,8 +67,9 @@ export function writeToken(key, value) {
   try {
     if (value) localStorage.setItem(key, value);
     else localStorage.setItem(key, '');
+    return true;
   } catch {
-    /* ignore quota */
+    return false;
   }
 }
 

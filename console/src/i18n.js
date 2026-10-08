@@ -2,6 +2,10 @@ export const DEFAULT_LOCALE = 'en';
 const STORAGE = 'respire.uiLocale';
 
 const EN = {
+  switchAccount: 'Switch account',
+  sessionStorageFailed: 'Could not save the active session. Check browser storage settings.',
+  accountListFailed: 'Could not update the saved account list. Sign in again if needed.',
+  addAccount: 'Sign in to another account',
   githubContinue: 'Continue with GitHub',
   githubUnlockFailed: 'The super password could not unlock this account. Check the recovery code and try again.',
   githubDescription: 'Use GitHub to sign in. Your memory recovery code stays separate.',
@@ -557,6 +561,10 @@ const EN = {
 };
 
 const ZH = {
+  switchAccount: '切换账号',
+  sessionStorageFailed: '无法保存当前登录，请检查浏览器存储设置。',
+  accountListFailed: '无法更新已保存账号列表，请按需重新登录。',
+  addAccount: '登录其他账号',
   githubContinue: '使用 GitHub 继续',
   githubUnlockFailed: '超级密码无法解锁此账户，请检查恢复码后重试。',
   githubDescription: '使用 GitHub 登录，超级密码仍由你自己保管。',
