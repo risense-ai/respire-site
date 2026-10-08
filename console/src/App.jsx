@@ -1,6 +1,9 @@
 import { useEffect, useRef, useState } from 'react';
 import { Gate } from './Gate.jsx';
 import { Shell } from './Shell.jsx';
+import { CliAuthorization } from './CliAuthorization.jsx';
+import { GithubCallback } from './GithubCallback.jsx';
+import { initialGithubCallback } from './githubAuth.js';
 import {
   ADMIN_KEY, USER_KEY, api, onUnauthorized, readToken, writeSecret, writeSuper, writeToken,
 } from './api.js';
@@ -43,6 +46,15 @@ function Console({ admin }) {
   const [switching, setSwitching] = useState(false);
   const [checked, setChecked] = useState(!readToken(key));
   const entryGeneration = useRef(0);
+  const [hash, setHash] = useState(window.location.hash);
+  const [github, setGithub] = useState(admin ? null : initialGithubCallback);
+  const authorization = !admin && (hash === '#/authorize' || hash.startsWith('#/authorize?'));
+  const authorizationCode = authorization ? new URLSearchParams(hash.slice('#/authorize?'.length)).get('code') || '' : '';
+  useEffect(() => {
+    const changed = () => setHash(window.location.hash);
+    window.addEventListener('hashchange', changed);
+    return () => window.removeEventListener('hashchange', changed);
+  }, []);
   const setToken = (value, superPass, secretKey) => {
     const previous = readToken(key);
     if (!writeToken(key, value)) throw new Error(t('sessionStorageFailed'));
@@ -139,6 +151,15 @@ function Console({ admin }) {
         setChecked(true);
       });
   }, [admin, token]);
+  if (github) {
+    const generation = entryGeneration.current;
+    return <GithubCallback grant={github} token={token} authorization={authorization}
+      onDone={() => { entryGeneration.current += 1; setGithub(null); }}
+      onEnter={async ({ token: value, superPass }) => {
+        if (generation !== entryGeneration.current) return;
+        if (await enterAccount(value, superPass)) setGithub(null);
+      }} />;
+  }
   if (!checked) {
     return <div className="gate-page" style={{ padding: 48 }}><p>{t('checkingLogin')}</p></div>;
   }
@@ -148,6 +169,7 @@ function Console({ admin }) {
       <>
         <Gate
           admin={admin}
+          authorization={authorization}
           notify={(t) => { setHint(t); window.setTimeout(() => setHint(''), 3500); }}
           onEnter={({ token: value, superPass, secretKey }) => {
             if (gateGeneration !== entryGeneration.current) return false;
@@ -159,6 +181,7 @@ function Console({ admin }) {
       </>
     );
   }
+  if (authorization) return <CliAuthorization key={`${token}:${authorizationCode}`} token={token} code={authorizationCode} onLogout={() => setToken('')} />;
   return (
     <>
     <Shell

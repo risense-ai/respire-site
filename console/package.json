@@ -6,7 +6,7 @@
   "scripts": {
     "dev": "vite --host 127.0.0.1",
     "build": "vite build",
-    "test": "node tests/hash-route.test.mjs && node tests/i18n.test.mjs && node --test tests/config.test.mjs tests/vite-config.test.mjs",
+    "test": "node tests/hash-route.test.mjs && node tests/i18n.test.mjs && node --test tests/config.test.mjs tests/vite-config.test.mjs tests/github-auth.test.mjs",
     "test:render": "node tests/browser-render.mjs",
     "test:browser": "node tests/browser-fixtures.mjs",
     "test:hosted": "node tests/browser-hosted-split-smoke.mjs",
@@ -17,7 +17,8 @@
   "dependencies": {
     "@phosphor-icons/react": "^2.1.10",
     "react": "^19.1.0",
-    "react-dom": "^19.1.0"
+    "react-dom": "^19.1.0",
+    "uplot": "^1.6.32"
   },
   "devDependencies": {
     "playwright": "1.63.0",

@@ -1,11 +1,17 @@
 import { t } from './i18n.js';
 import { apiUrl } from './config.js';
 
-export const USER_KEY = 'onememory.userToken';
-export const ADMIN_KEY = 'onememory.adminToken';
-export const SUPER_KEY = 'onememory.superPass';
-export const SECRET_KEY = 'onememory.secretKey';
-export const SUPER_AT_KEY = 'onememory.superPassAt';
+export const USER_KEY = 'rsrs.userToken';
+export const ADMIN_KEY = 'rsrs.adminToken';
+export const SUPER_KEY = 'rsrs.superPass';
+export const SECRET_KEY = 'rsrs.secretKey';
+export const SUPER_AT_KEY = 'rsrs.superPassAt';
+
+// Read old browser credentials without copying or deleting them. An explicit
+// empty current value prevents logout from reviving a legacy credential.
+function stored(key) {
+  return localStorage.getItem(key) ?? localStorage.getItem(key.replace(/^rsrs\./, 'onememory.')) ?? '';
+}
 
 // Locally saved recovery codes expire after three days; do not auto-unlock or prefill expired codes.
 // Require manual entry after expiration and renew the timestamp on successful unlock.
@@ -51,7 +57,7 @@ export async function api(path, { method = 'GET', body, token, signal } = {}) {
 
 export function readToken(key) {
   try {
-    return localStorage.getItem(key) || '';
+    return stored(key);
   } catch {
     return '';
   }
@@ -60,7 +66,7 @@ export function readToken(key) {
 export function writeToken(key, value) {
   try {
     if (value) localStorage.setItem(key, value);
-    else localStorage.removeItem(key);
+    else localStorage.setItem(key, '');
     return true;
   } catch {
     return false;
@@ -69,7 +75,7 @@ export function writeToken(key, value) {
 
 export function readSuper() {
   try {
-    return localStorage.getItem(SUPER_KEY) || '';
+    return stored(SUPER_KEY);
   } catch {
     return '';
   }
@@ -81,8 +87,8 @@ export function writeSuper(value) {
       localStorage.setItem(SUPER_KEY, value);
       localStorage.setItem(SUPER_AT_KEY, String(Date.now()));
     } else {
-      localStorage.removeItem(SUPER_KEY);
-      localStorage.removeItem(SUPER_AT_KEY);
+      localStorage.setItem(SUPER_KEY, '');
+      localStorage.setItem(SUPER_AT_KEY, '');
     }
   } catch {
     /* ignore quota */
@@ -91,7 +97,7 @@ export function writeSuper(value) {
 
 export function readSecret() {
   try {
-    return localStorage.getItem(SECRET_KEY) || '';
+    return stored(SECRET_KEY);
   } catch {
     return '';
   }
@@ -100,7 +106,7 @@ export function readSecret() {
 export function writeSecret(value) {
   try {
     if (value) localStorage.setItem(SECRET_KEY, value);
-    else localStorage.removeItem(SECRET_KEY);
+    else localStorage.setItem(SECRET_KEY, '');
   } catch {
     /* ignore quota */
   }
@@ -110,7 +116,7 @@ export function writeSecret(value) {
 export function superFresh() {
   const saved = readSuper();
   if (!saved) return false;
-  const at = Number(localStorage.getItem(SUPER_AT_KEY) || 0);
+  const at = Number(stored(SUPER_AT_KEY) || 0);
   if (!at) return false; // Treat older records without a timestamp as expired.
   return Date.now() - at < SUPER_TTL_MS;
 }
@@ -119,7 +125,7 @@ export function superFresh() {
 export function superFreshText() {
   const saved = readSuper();
   if (!saved) return t('superNotSaved');
-  const at = Number(localStorage.getItem(SUPER_AT_KEY) || 0);
+  const at = Number(stored(SUPER_AT_KEY) || 0);
   if (!at) return t('superExpiredNoTs');
   const remain = SUPER_TTL_MS - (Date.now() - at);
   if (remain <= 0) return t('superExpiredShort');

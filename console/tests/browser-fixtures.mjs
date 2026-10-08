@@ -7,7 +7,7 @@ import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { promisify } from 'node:util';
 import { chromium } from 'playwright';
-import { decryptItem, deriveDataKey, unwrapUrk } from '../src/crypto.js';
+import { decryptItem, deriveDataKeys, unwrapUrk, generateSecretKey, wrapVaultV4 } from '../src/crypto.js';
 import { t } from '../src/i18n.js';
 import { FIXTURE, startFixtureApi, closeServer, listen } from './fixture-api.mjs';
 import { startFixtureProxy } from './fixture-proxy.mjs';
@@ -20,8 +20,8 @@ import { startFixtureProxy } from './fixture-proxy.mjs';
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const temporary = await mkdtemp(resolve(tmpdir(), 'respire-console-fixtures-'));
 const exec = promisify(execFile);
-const USER_KEY = 'onememory.userToken';
-const ADMIN_KEY = 'onememory.adminToken';
+const USER_KEY = 'rsrs.userToken';
+const ADMIN_KEY = 'rsrs.adminToken';
 const bothTokens = { [USER_KEY]: FIXTURE.userToken, [ADMIN_KEY]: FIXTURE.adminToken };
 const uiPath = (mode) => (mode === 'admin' ? '/admin' : '/dashboard');
 const runtimeErrors = [];
@@ -153,7 +153,7 @@ try {
     // Chromium otherwise bypasses proxies for loopback hosts. This only changes
     // proxy routing; browser web security remains enabled.
     proxy: { server: proxy.origin, bypass: '<-loopback>' },
-    ...(process.env.RESPIRE_BROWSER_EXECUTABLE ? { executablePath: process.env.RESPIRE_BROWSER_EXECUTABLE } : {}),
+    ...(process.env.RSRS_BROWSER_EXECUTABLE ? { executablePath: process.env.RSRS_BROWSER_EXECUTABLE } : {}),
   });
 
   const accountKey = 'rsrs.dashboard.accounts';
@@ -172,17 +172,17 @@ try {
     const page = await open('/dashboard', { [USER_KEY]: FIXTURE.userToken, [accountKey]: JSON.stringify(savedAccounts) });
     await page.locator('.workspace-switch strong').filter({ hasText: FIXTURE.user }).waitFor();
     await page.evaluate(() => {
-      localStorage.setItem('onememory.superPass', 'synthetic-old-unlock');
-      localStorage.setItem('onememory.secretKey', 'synthetic-old-secret');
+      localStorage.setItem('rsrs.superPass', 'synthetic-old-unlock');
+      localStorage.setItem('rsrs.secretKey', 'synthetic-old-secret');
     });
     await page.getByLabel(t('switchAccount'), { exact: true }).selectOption(FIXTURE.secondToken);
     await page.locator('.workspace-switch strong').filter({ hasText: FIXTURE.secondUser }).waitFor();
     assert.equal(await stored(page, USER_KEY), FIXTURE.secondToken);
-    assert.equal(await stored(page, 'onememory.superPass'), null);
-    assert.equal(await stored(page, 'onememory.secretKey'), null);
+    assert.equal(await stored(page, 'rsrs.superPass'), '');
+    assert.equal(await stored(page, 'rsrs.secretKey'), '');
     await page.locator('.sidebar-bottom').getByRole('button', { name: t('signOut'), exact: true }).click();
     await page.locator('.gate-form').waitFor();
-    assert.equal(await stored(page, USER_KEY), null);
+    assert.equal(await stored(page, USER_KEY), '');
     assert.deepEqual(JSON.parse(await stored(page, accountKey)), savedAccounts.slice(0, 1));
   });
   await run('dashboard: add another login retains both sessions without passwords or keys', async () => {
@@ -214,13 +214,13 @@ try {
     await request;
     const other = await context.newPage();
     await other.goto(`${origin}/dashboard`);
-    await other.evaluate(() => localStorage.removeItem('onememory.userToken'));
+    await other.evaluate(() => localStorage.setItem('rsrs.userToken', ''));
     await page.locator('.gate-form').waitFor();
     const response = page.waitForResponse(r => new URL(r.url()).pathname === '/api/self' && r.request().headers().authorization === `Bearer ${FIXTURE.secondToken}`);
     release();
     await response;
     await page.waitForLoadState('networkidle');
-    assert.equal(await stored(page, USER_KEY), null);
+    assert.equal(await stored(page, USER_KEY), '');
     assert.equal(await page.locator('.console-main').count(), 0);
   });
   await run('dashboard: session storage failure does not claim a successful switch', async () => {
@@ -229,7 +229,7 @@ try {
     await page.evaluate(() => {
       const original = Storage.prototype.setItem;
       Storage.prototype.setItem = function(key, value) {
-        if (key === 'onememory.userToken') throw new DOMException('fixture quota', 'QuotaExceededError');
+        if (key === 'rsrs.userToken') throw new DOMException('fixture quota', 'QuotaExceededError');
         return original.call(this, key, value);
       };
     });
@@ -252,7 +252,7 @@ try {
     await page.locator('.sidebar-bottom').getByRole('button', { name: t('signOut'), exact: true }).click();
     await page.locator('.gate-form').waitFor();
     await page.getByRole('status').filter({ hasText: t('accountListFailed') }).waitFor();
-    assert.equal(await stored(page, USER_KEY), null);
+    assert.equal(await stored(page, USER_KEY), '');
   });
 
   for (const mode of ['dashboard', 'admin']) {
@@ -265,7 +265,7 @@ try {
 
     await run(`${mode}: own token only, shell, and sign-out separation`, async () => {
       const start = api.requests.length;
-      const page = await open(uiPath(mode), bothTokens);
+      const page = await open(uiPath(mode), { 'onememory.userToken': FIXTURE.userToken, 'onememory.adminToken': FIXTURE.adminToken });
       await page.locator(`.console-main.surface-${mode === 'admin' ? 'users' : 'memories'}`).waitFor();
       // Let the shell's profile load finish before inspecting outgoing headers.
       await page.locator('.workspace-switch strong').filter({ hasText: mode === 'admin' ? FIXTURE.admin : FIXTURE.user }).waitFor();
@@ -277,8 +277,11 @@ try {
       assert.ok(calls.every(r => mode === 'admin' ? r.path.startsWith('/admin/') : !r.path.startsWith('/admin/')));
       await page.locator('.sidebar-bottom').getByRole('button', { name: t('signOut'), exact: true }).click();
       await page.locator('.gate-form').waitFor();
-      assert.equal(await stored(page, mode === 'admin' ? ADMIN_KEY : USER_KEY), null);
-      assert.equal(await stored(page, mode === 'admin' ? USER_KEY : ADMIN_KEY), mode === 'admin' ? FIXTURE.userToken : FIXTURE.adminToken);
+      assert.equal(await stored(page, mode === 'admin' ? ADMIN_KEY : USER_KEY), '');
+      assert.equal(await stored(page, mode === 'admin' ? 'onememory.userToken' : 'onememory.adminToken'), mode === 'admin' ? FIXTURE.userToken : FIXTURE.adminToken);
+
+      await page.reload();
+      await page.locator('.gate-form').waitFor();
     });
 
     await run(`${mode}: opposite token cannot authenticate`, async () => {
@@ -293,7 +296,7 @@ try {
       api.state.failures.set(`GET ${probe}`, { status: 401, error: 'fixture expired session' });
       const page = await open(uiPath(mode), bothTokens);
       await page.locator('.gate-form').waitFor();
-      assert.equal(await stored(page, mode === 'admin' ? ADMIN_KEY : USER_KEY), null);
+      assert.equal(await stored(page, mode === 'admin' ? ADMIN_KEY : USER_KEY), '');
       assert.equal(await stored(page, mode === 'admin' ? USER_KEY : ADMIN_KEY), mode === 'admin' ? FIXTURE.userToken : FIXTURE.adminToken);
     });
 
@@ -317,6 +320,8 @@ try {
       await submit(page);
       const code = page.getByLabel(t('totpCode'), { exact: true });
       await code.waitFor();
+      assert.equal(await page.getByLabel(t('loginPassword'), { exact: true }).count(), 0, 'Second factor uses its own page');
+      assert.equal(await page.getByLabel(t('username'), { exact: true }).count(), 0);
       assert.equal(await stored(page, mode === 'admin' ? ADMIN_KEY : USER_KEY), null, 'Challenge must not create a session');
       await code.fill('000000');
       await submit(page, 'verify');
@@ -375,6 +380,43 @@ try {
     await page.locator('.console-main.surface-security').waitFor();
   });
 
+  await run('admin: daily stats ranges, missing history, timezone and responsive chart', async () => {
+    const page = await open('/admin#/stats', bothTokens);
+    await page.locator('.stats-panel .uplot').waitFor();
+    await page.getByText(t('statsHistory', { date: '2026-10-05' }), { exact: true }).waitFor();
+    for (const days of [7, 90, 30]) {
+      await waitForApi(page, '/admin/stats', 'GET', () => page.getByRole('button', { name: t('statsDays', { n: days }), exact: true }).click());
+      await page.locator('.stats-panel .uplot').waitFor();
+      assert.ok(api.requests.some(r => r.path === '/admin/stats' && r.search === `?days=${days}`));
+    }
+    await page.setViewportSize({ width: 390, height: 844 });
+    await page.waitForFunction(() => {
+      const plot = document.querySelector('.stats-panel .uplot');
+      return plot && plot.getBoundingClientRect().width <= plot.parentElement.clientWidth + 1;
+    });
+    assert.equal(await stored(page, ADMIN_KEY), FIXTURE.adminToken);
+  });
+
+  await run('admin: daily stats viewer denial preserves both sessions', async () => {
+    api.state.adminRole = 'viewer';
+    const page = await open('/admin#/stats', bothTokens);
+    await page.getByRole('alert').filter({ hasText: t('statsForbidden') }).waitFor();
+    assert.equal(await page.locator('.stats-panel .uplot').count(), 0);
+    assert.equal(await stored(page, ADMIN_KEY), FIXTURE.adminToken);
+    assert.equal(await stored(page, USER_KEY), FIXTURE.userToken);
+  });
+
+  await run('admin: daily stats database error retries the same range', async () => {
+    api.state.failures.set('GET /admin/stats', { status: 503, error: 'fixture database unavailable' });
+    const page = await open('/admin#/stats', bothTokens);
+    await page.getByRole('alert').filter({ hasText: t('statsLoadFailed') }).waitFor();
+    api.state.failures.delete('GET /admin/stats');
+    await waitForApi(page, '/admin/stats', 'GET', () => page.getByRole('button', { name: t('statsRetry'), exact: true }).click());
+    await page.locator('.stats-panel .uplot').waitFor();
+    assert.equal(await page.getByRole('alert').count(), 0);
+    assert.equal(await stored(page, ADMIN_KEY), FIXTURE.adminToken);
+  });
+
   await run('admin: direct token login uses only admin credential slot', async () => {
     const page = await open('/admin', { [USER_KEY]: FIXTURE.userToken });
     await page.getByRole('button', { name: t('useAdminToken'), exact: true }).click();
@@ -390,7 +432,7 @@ try {
       api.state.failures.set(`GET ${mode === 'admin' ? '/admin/me' : '/api/self'}`, { status: 403, error: 'fixture forbidden probe' });
       const page = await open(uiPath(mode), bothTokens);
       await page.locator('.gate-form').waitFor();
-      assert.equal(await stored(page, mode === 'admin' ? ADMIN_KEY : USER_KEY), null);
+      assert.equal(await stored(page, mode === 'admin' ? ADMIN_KEY : USER_KEY), '');
       assert.equal(await stored(page, mode === 'admin' ? USER_KEY : ADMIN_KEY), mode === 'admin' ? FIXTURE.userToken : FIXTURE.adminToken);
     });
   }
@@ -407,7 +449,7 @@ try {
     api.state.failures.set('GET /admin/users', { status: 403, error: 'admin token required' });
     const page = await open('/admin', bothTokens);
     await page.locator('.gate-form').waitFor();
-    assert.equal(await stored(page, ADMIN_KEY), null);
+    assert.equal(await stored(page, ADMIN_KEY), '');
     assert.equal(await stored(page, USER_KEY), FIXTURE.userToken);
   });
 
@@ -433,7 +475,7 @@ try {
     api.state.failures.set('POST /api/self/email', { status: 401, error: 'fixture revoked session' });
     await page.getByRole('button', { name: t('sendCode'), exact: true }).click();
     await page.locator('.gate-form').waitFor();
-    assert.equal(await stored(page, USER_KEY), null);
+    assert.equal(await stored(page, USER_KEY), '');
     assert.equal(await stored(page, ADMIN_KEY), FIXTURE.adminToken);
   });
 
@@ -456,6 +498,146 @@ try {
     await page.getByText(t('verified'), { exact: true }).waitFor();
     await page.reload();
     await page.getByText(t('verified'), { exact: true }).waitFor();
+  });
+
+  await run('dashboard: TOTP unbind retries preserve the session and binding state', async () => {
+    api.state.userTotp = true;
+    const page = await open('/dashboard#/security', bothTokens);
+    await page.locator('.security-overview h2').getByText(t('totpOnH2'), { exact: true }).waitFor();
+    await page.locator('.security-tabs').getByRole('button', { name: t('twoFactor'), exact: true }).click();
+    const code = page.getByLabel(t('totpCode'), { exact: true });
+    await page.getByRole('heading', { name: t('totpBoundTitle'), exact: true }).waitFor();
+    assert.equal(await page.getByRole('button', { name: t('startBind'), exact: true }).count(), 0);
+    assert.equal(await page.getByRole('button', { name: t('confirmOn'), exact: true }).count(), 0);
+    const disable = page.locator('.key-actions').getByRole('button', { name: t('unbindTotp'), exact: true });
+    assert.equal(await disable.isEnabled(), false);
+    await code.fill('000000');
+    await waitForApi(page, '/api/self/totp/disable', 'POST', () => disable.click(), 400);
+    await assertAlert(page, 'fixture invalid second factor');
+    assert.equal(api.state.userTotp, true);
+    assert.equal(await stored(page, USER_KEY), FIXTURE.userToken);
+    await code.fill(FIXTURE.totpCode);
+    await waitForApi(page, '/api/self/totp/disable', 'POST', () => disable.click());
+    await page.locator('.security-overview h2').getByText(t('totpOffH2'), { exact: true }).waitFor();
+    assert.equal(await stored(page, USER_KEY), FIXTURE.userToken);
+    assert.equal(await stored(page, ADMIN_KEY), FIXTURE.adminToken);
+    await page.getByRole('button', { name: t('startBind'), exact: true }).waitFor();
+    assert.equal(await page.getByRole('button', { name: t('unbindTotp'), exact: true }).count(), 0);
+    assert.equal(await page.getByLabel(t('totpCode'), { exact: true }).count(), 0);
+    await page.reload();
+    await page.locator('.security-overview h2').getByText(t('totpOffH2'), { exact: true }).waitFor();
+  });
+
+  await run('dashboard: CLI authorization follows independent TOTP login and explicit approval', async () => {
+    api.state.userTotp = true;
+    const page = await open('/dashboard#/authorize?code=ABCDEF123456');
+    await enterCredentials(page);
+    await submit(page);
+    await page.getByLabel(t('totpCode'), { exact: true }).fill(FIXTURE.totpCode);
+    await submit(page, 'verify');
+    await page.getByText('fixture-terminal', { exact: false }).waitFor();
+    assert.equal(api.state.cliDecision, 'pending', 'Login alone must not authorize the CLI');
+    await page.getByRole('button', { name: t('cliAuthorizeApprove'), exact: true }).click();
+    await page.getByRole('status').getByText(t('cliAuthorizeDone'), { exact: true }).waitFor();
+    assert.equal(api.state.cliDecision, 'approved');
+    assert.equal(await stored(page, USER_KEY), FIXTURE.userToken);
+  });
+
+  await run('dashboard: GitHub login requires recovery code and preserves the existing vault', async () => {
+    const recovery = generateSecretKey();
+    api.state.vault = await wrapVaultV4(recovery);
+    const original = JSON.stringify(api.state.vault);
+    const page = await open('/dashboard');
+    await page.getByRole('button', { name: t('githubContinue'), exact: true }).click();
+    await page.getByLabel(t('superPassword'), { exact: true }).fill('wrong-recovery-code');
+    await page.getByRole('button', { name: t('continue'), exact: true }).click();
+    await page.getByRole('alert').waitFor();
+    assert.equal(await stored(page, USER_KEY), null);
+    await page.getByLabel(t('superPassword'), { exact: true }).fill(generateSecretKey());
+    await page.getByRole('button', { name: t('continue'), exact: true }).click();
+    await assertAlert(page, t('githubUnlockFailed'));
+    assert.equal(await stored(page, USER_KEY), null);
+    assert.equal(JSON.stringify(api.state.vault), original);
+    await page.getByLabel(t('superPassword'), { exact: true }).fill(recovery);
+    await page.getByRole('button', { name: t('continue'), exact: true }).click();
+    await page.locator('.console-main').waitFor();
+    assert.equal(await stored(page, USER_KEY), FIXTURE.userToken);
+    assert.equal(JSON.stringify(api.state.vault), original);
+    assert.equal(new URL(page.url()).search, '');
+    assert.equal(api.requests.filter(r => r.method === 'POST' && r.path === '/oauth/github/exchange').length, 1);
+  });
+
+  await run('dashboard: new GitHub account confirms its locally generated recovery code before login', async () => {
+    const page = await open('/dashboard');
+    await page.getByRole('button', { name: t('githubContinue'), exact: true }).click();
+    await page.getByRole('button', { name: t('generateSuper'), exact: true }).click();
+    const recovery = await page.locator('.demo-key code').innerText();
+    assert.match(recovery, /^A3-/);
+    assert.equal(await stored(page, USER_KEY), null);
+    assert.equal(await page.getByRole('button', { name: t('continue'), exact: true }).isEnabled(), false);
+    assert.equal(api.state.vault, null, 'Do not upload a vault before the recovery code was confirmed saved');
+    await page.getByLabel(t('confirmSavedSuper'), { exact: true }).check();
+    await page.getByRole('button', { name: t('continue'), exact: true }).click();
+    await page.locator('.console-main').waitFor();
+    assert.equal(await stored(page, USER_KEY), FIXTURE.userToken);
+    assert.equal(api.state.vault.version, 4);
+    assert.equal((await unwrapUrk(recovery, undefined, api.state.vault)).length, 32);
+    assert.ok(api.requests.every(r => !JSON.stringify(r.body || {}).includes(recovery)), 'Recovery code must stay local');
+  });
+
+  await run('dashboard: GitHub TOTP keeps the CLI authorization code through the redirect', async () => {
+    api.state.userTotp = true;
+    api.state.vault = await wrapVaultV4(generateSecretKey());
+    const page = await open('/dashboard#/authorize?code=ABCDEF123456');
+    await page.getByRole('button', { name: t('githubContinue'), exact: true }).click();
+    await page.getByLabel(t('totpCode'), { exact: true }).fill('000000');
+    await page.getByRole('button', { name: t('verify'), exact: true }).click();
+    await assertAlert(page, 'fixture invalid second factor');
+    assert.equal(await stored(page, USER_KEY), null);
+    await page.getByLabel(t('totpCode'), { exact: true }).fill(FIXTURE.totpCode);
+    await page.getByRole('button', { name: t('verify'), exact: true }).click();
+    await page.getByText('fixture-terminal', { exact: false }).waitFor();
+    assert.equal(api.state.cliDecision, 'pending');
+    await page.getByRole('button', { name: t('cliAuthorizeApprove'), exact: true }).click();
+    await page.getByRole('status').getByText(t('cliAuthorizeDone'), { exact: true }).waitFor();
+    assert.equal(api.state.cliDecision, 'approved');
+  });
+
+  await run('dashboard: GitHub binding and unlinking retain the current session', async () => {
+    const page = await open('/dashboard#/security', bothTokens);
+    await page.getByRole('button', { name: t('githubBind'), exact: true }).click();
+    await page.getByText('fixture-github', { exact: true }).waitFor();
+    assert.equal(await stored(page, USER_KEY), FIXTURE.userToken);
+    api.state.failures.set('POST /api/self/github/unbind', { status: 409, error: 'set a login password first' });
+    await page.getByRole('button', { name: t('githubUnbind'), exact: true }).click();
+    await assertAlert(page, 'set a login password first');
+    assert.equal(await stored(page, USER_KEY), FIXTURE.userToken);
+    api.state.failures.delete('POST /api/self/github/unbind');
+    await page.getByRole('button', { name: t('githubUnbind'), exact: true }).click();
+    await page.getByRole('button', { name: t('githubBind'), exact: true }).waitFor();
+    assert.equal(await stored(page, USER_KEY), FIXTURE.userToken);
+    assert.equal(await stored(page, ADMIN_KEY), FIXTURE.adminToken);
+    await page.reload();
+    await page.getByRole('button', { name: t('githubBind'), exact: true }).waitFor();
+  });
+
+  await run('dashboard: CLI authorization can be denied without signing out', async () => {
+    const page = await open('/dashboard#/authorize?code=ABCDEF123456', bothTokens);
+    await page.getByRole('button', { name: t('cliAuthorizeDeny'), exact: true }).click();
+    await page.getByRole('status').getByText(t('cliAuthorizeDenied'), { exact: true }).waitFor();
+    assert.equal(api.state.cliDecision, 'denied');
+    assert.equal(await stored(page, USER_KEY), FIXTURE.userToken);
+    assert.equal(await stored(page, ADMIN_KEY), FIXTURE.adminToken);
+  });
+
+  await run('dashboard: CLI authorization lookup errors allow editing without signing out', async () => {
+    const page = await open('/dashboard#/authorize?code=000000000000', bothTokens);
+    await assertAlert(page, 'fixture authorization code not found');
+    await page.getByLabel(t('cliAuthorizeEnterCode'), { exact: true }).fill('ABCDEF123456');
+    await page.getByRole('button', { name: t('cliAuthorizeApprove'), exact: true }).click();
+    await page.getByRole('status').getByText(t('cliAuthorizeDone'), { exact: true }).waitFor();
+    assert.equal(await stored(page, USER_KEY), FIXTURE.userToken);
+    assert.equal(await stored(page, ADMIN_KEY), FIXTURE.adminToken);
   });
 
   await run('dashboard: registration vault and encrypted save/read/edit/deep link', async () => {
@@ -491,7 +673,7 @@ try {
     await dialog.waitFor({ state: 'hidden' });
     assert.equal(api.state.blobs.size, 1);
     const [blob] = api.state.blobs.values();
-    const key = await deriveDataKey(await unwrapUrk(recovery, '', api.state.vault));
+    const key = await deriveDataKeys(await unwrapUrk(recovery, '', api.state.vault), true);
     const decrypted = JSON.parse(await decryptItem(key, blob.ciphertext, blob.nonce));
     assert.equal(decrypted.title, title);
     assert.equal(decrypted.content, content);
@@ -512,6 +694,28 @@ try {
     const saved = api.state.blobs.get(blob.id);
     assert.equal(JSON.parse(await decryptItem(key, saved.ciphertext, saved.nonce)).content, edited);
     assert.ok(api.requests.some(r => r.path === '/api/self/memories' && r.search.includes('snapshot=0')), 'Saving should use incremental sync');
+    const vaultReads = api.requests.filter(r => r.path === '/api/self/vault').length;
+    await page.evaluate(() => localStorage.removeItem('rsrs.superPass'));
+    await waitForApi(page, '/api/self/memories', 'GET', () => page.getByRole('button', { name: t('pullLatest'), exact: true }).click());
+    assert.equal(api.requests.filter(r => r.path === '/api/self/vault').length, vaultReads, 'Pull latest must retain the unlocked controller without requesting the vault or saved key again');
+    await page.evaluate(value => localStorage.setItem('rsrs.superPass', value), recovery);
+    const pagerIds = Array.from({ length: 24 }, (_, n) => `fixture-pager-${n}`);
+    for (const id of pagerIds) api.state.blobs.set(id, { ...saved, id, revision: ++api.state.revision });
+    await waitForApi(page, '/api/self/memories', 'GET', () => page.getByRole('button', { name: t('pullLatest'), exact: true }).click());
+    await page.locator('.memory-status').getByText(t('nMemories', { n: 25 }), { exact: true }).waitFor();
+    await page.getByLabel(t('searchMemory'), { exact: true }).fill('');
+    await page.getByRole('tab', { name: t('cardView'), exact: true }).click();
+    await page.locator('.pager').getByRole('button', { name: t('nextPage'), exact: true }).click();
+    await page.locator('.pager-state').getByText(t('pageOf', { n: 2, total: 2 }), { exact: true }).waitFor();
+    const removedId = pagerIds.at(-1);
+    api.state.blobs.set(removedId, { ...api.state.blobs.get(removedId), deleted: true, revision: ++api.state.revision });
+    await waitForApi(page, '/api/self/memories', 'GET', () => page.getByRole('button', { name: t('pullLatest'), exact: true }).click());
+    await page.locator('.pager').waitFor({ state: 'hidden' });
+    await page.locator('.memory-card').nth(23).waitFor();
+    assert.equal(await page.locator('.memory-card').count(), 24, 'Deleting the last page must clamp the view rather than leave an empty page');
+    for (const id of pagerIds.slice(0, -1)) api.state.blobs.set(id, { ...api.state.blobs.get(id), deleted: true, revision: ++api.state.revision });
+    await waitForApi(page, '/api/self/memories', 'GET', () => page.getByRole('button', { name: t('pullLatest'), exact: true }).click());
+    await page.locator('.memory-status').getByText(t('nMemories', { n: 1 }), { exact: true }).waitFor();
     await page.goto(`${origin}/dashboard/memories/${blob.id}`);
     await page.locator('.reading-main').getByText(edited, { exact: true }).waitFor();
     assert.equal(new URL(page.url()).hash, `#/memories/${blob.id}`);
@@ -525,7 +729,7 @@ try {
     await page.getByLabel(t('searchMemory'), { exact: true }).fill(title);
     await page.locator('.search-hit').filter({ hasText: title }).click();
     await page.locator('.reading-main').getByText(edited, { exact: true }).waitFor();
-    await page.evaluate(() => localStorage.setItem('onememory.superPassAt', String(Date.now() - 4 * 24 * 3600 * 1000)));
+    await page.evaluate(() => localStorage.setItem('rsrs.superPassAt', String(Date.now() - 4 * 24 * 3600 * 1000)));
     await page.reload();
     await page.locator('.locked-state').waitFor();
     await page.getByRole('button', { name: t('unlockMemory'), exact: true }).click();

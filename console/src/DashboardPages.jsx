@@ -6,7 +6,7 @@ import {
   ListBullets, CaretDown, BookOpen, SquaresFour, Compass, ListChecks, Heart, Wrench, Smiley, Tag,
 } from '@phosphor-icons/react';
 import { Button, Badge, Heading, Empty, Note, SecretResult, copy, download, useI18n } from './ui.jsx';
-import { decryptItem, deriveDataKey, encryptItem, generateSecretKey, unwrapUrk, wrapVaultV4 } from './crypto.js';
+import { decryptItem, deriveDataKeys, encryptItem, generateSecretKey, unwrapUrk, wrapVaultV4 } from './crypto.js';
 import { api, readSecret, readSuper, readToken, USER_KEY, superFresh, superFreshText, writeSecret, writeSuper } from './api.js';
 import { MemorySync } from './memorySync.js';
 import { Security } from './Security.jsx';
@@ -115,6 +115,10 @@ export function DashboardPages({
   const [vaultInfo, setVaultInfo] = useState(undefined);
   const [viewMode, setViewMode] = useState('tree');
   const [expanded, setExpanded] = useState(() => new Set([ROOT_ID, DIARY_ID]));
+  const list = useMemo(() => (items || []).filter((m) => [m.title, m.content, m.kind, m.project].filter(Boolean).join(' ').toLowerCase().includes(query.toLowerCase())), [items, query]);
+  useEffect(() => {
+    setListPage(current => Math.min(current, Math.max(1, Math.ceil(list.length / PAGE_SIZE))));
+  }, [list.length]);
   // Memoize indexes and search results because TreeBranch depends on index identity.
   // Rebuilding them on every render would reset expanded child rows.
   const treeSource = useMemo(() => {
@@ -223,8 +227,11 @@ export function DashboardPages({
     if (v === 3 && !pass) throw new Error(t('needSuperV3'));
     if (v === 3 && !secret) throw new Error(t('needSecretV3'));
     const urk = await unwrapUrk(pass, secret, vault);
-    const dataKey = await deriveDataKey(urk);
-    const decryptKey = await crypto.subtle.importKey('raw', dataKey, 'AES-GCM', false, ['decrypt']);
+    const dataKey = await deriveDataKeys(urk, vault.wrapped_urk.startsWith('rsrs:v1:'));
+    const decryptKey = {
+      legacy: await crypto.subtle.importKey('raw', dataKey.legacy, 'AES-GCM', false, ['decrypt']),
+      current: await crypto.subtle.importKey('raw', dataKey.current, 'AES-GCM', false, ['decrypt']),
+    };
     if (generation !== unlockGeneration.current || readToken(USER_KEY) !== token) {
       throw new DOMException('Unlock superseded', 'AbortError');
     }
@@ -514,7 +521,6 @@ export function DashboardPages({
   }
 
   if (page === 'memories') {
-    const list = (items || []).filter((m) => [m.title, m.content, m.kind, m.project].filter(Boolean).join(' ').toLowerCase().includes(query.toLowerCase()));
     const mem = (items || []).find((m) => m.id === memoryId);
     if (locked && items === null) {
       return (
