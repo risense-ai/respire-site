@@ -97,8 +97,15 @@ export function Gate({ admin, onEnter, notify }) {
         return;
       }
       if (!saved) return setError(t('confirmSuperFirst'));
-      await finishUser(issued.token, issued.superPass, undefined);
-      notify(t('accountCreated'));
+      setBusy(true);
+      try {
+        await finishUser(issued.token, issued.superPass, undefined);
+        notify(t('accountCreated'));
+      } catch (err) {
+        fail(err);
+      } finally {
+        setBusy(false);
+      }
       return;
     }
 
