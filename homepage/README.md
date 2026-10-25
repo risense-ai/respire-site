@@ -7,9 +7,10 @@ React/Vite source for the Respire website. English is served at `/`; Chinese at 
 | `src/App.tsx` | Header, hero, product sections and portal links |
 | `src/respire/product-story.tsx` | Workflow tabs, examples and FAQ |
 | `src/respire/product-details.tsx` | CLI installation and usage |
+| `src/respire/plugins.tsx` | Supported host plugins and documentation links |
 | `src/respire/MemoryFiberScene.tsx` | Three.js artwork, image fallback and motion controls |
 | `src/respire/memory-narrative.tsx` | Scroll-linked continuous red strand |
-| `src/destinations.ts` | Portal and base-path configuration |
+| `src/destinations.ts` | Portal, documentation and base-path configuration |
 | `assets/` | Original reference artwork and favicon |
 | `scripts/verify-marketing.mjs` | Built-page browser checks |
 
@@ -27,7 +28,7 @@ npm run verify:browser
 
 Set `CHROME_PATH` to use an existing Chrome executable instead of the Playwright browser. Set `SITE_SCREENSHOTS` to capture desktop and mobile screenshots during verification.
 
-The browser check exercises English and Chinese rendering, portal links, CLI instructions, FAQ, animation pause, mobile navigation, overflow and reduced motion. Source checks run through `npm test`.
+The browser check exercises English and Chinese rendering, portal links, CLI instructions, plugin documentation links, FAQ, animation pause, mobile navigation, overflow and reduced motion. Source checks run through `npm test`.
 
 ## Production and development preview
 
@@ -37,6 +38,7 @@ The browser check exercises English and Chinese rendering, portal links, CLI ins
 | `VITE_SITE_OUT_DIR` | `../site/dist/client` | `../site/dist/preview` |
 | `VITE_DASHBOARD_URL` | `https://dash.rsrs.rs` | `/dashboard` |
 | `VITE_ADMIN_URL` | `https://admin.rsrs.rs` | `/admin` |
+| `VITE_DOCS_URL` | `https://docs.rsrs.rs` | `https://docs.rsrs.rs` |
 
 `npm run build:dev` applies the preview settings and writes a separate distribution. To verify it:
 
