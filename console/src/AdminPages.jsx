@@ -145,6 +145,7 @@ function formatUserTime(value) {
 export function AdminPages({ page, token, me, notify, open, onReloadMe }) {
   useI18n();
   const [users, setUsers] = useState([]);
+  const [usersLoading, setUsersLoading] = useState(false);
   const [total, setTotal] = useState(0);
   const [summary, setSummary] = useState(null);
   const pageSize = 50;
@@ -168,13 +169,19 @@ export function AdminPages({ page, token, me, notify, open, onReloadMe }) {
 
   const loadUsers = async (p = pn, q = query, status = filter, sortBy = sort, direction = order) => {
     const request = ++usersRequest.current;
-    const list = await api(`/admin/users?q=${encodeURIComponent(q)}&page=${p}&limit=${pageSize}&status=${status}&sort=${sortBy}&order=${direction}`, { token });
-    if (request !== usersRequest.current) return;
-    setSort(sortBy); setOrder(direction);
-    setUsers(list.users || []);
-    setTotal(list.total || 0);
-    setSummary(list.summary);
-    setPn(list.page || p);
+    setUsersLoading(true);
+    try {
+      const list = await api(`/admin/users?q=${encodeURIComponent(q)}&page=${p}&limit=${pageSize}&status=${status}&sort=${sortBy}&order=${direction}`, { token });
+      if (request !== usersRequest.current) return false;
+      setSort(sortBy); setOrder(direction);
+      setUsers(list.users || []);
+      setTotal(list.total || 0);
+      setSummary(list.summary);
+      setPn(list.page || p);
+      return true;
+    } finally {
+      if (request === usersRequest.current) setUsersLoading(false);
+    }
   };
   const loadAll = async () => {
     await loadUsers();
@@ -265,13 +272,13 @@ export function AdminPages({ page, token, me, notify, open, onReloadMe }) {
           <div className="panel-toolbar">
             <div className="tabs" aria-label={t('userStatusFilter')}>
               {[['all', t('filterAll')], ['ok', t('statusOk')], ['banned', t('statusBanned')], ['deleted', t('statusDeleted')]].map(([id, label]) => (
-                <button key={id} className={filter === id ? 'active' : ''} onClick={() => { setFilter(id); setSelected(null); loadUsers(1, query, id).catch((e) => notify(e.message)); }}>{label}<span>{counts[id] ?? '—'}</span></button>
+                <button key={id} disabled={usersLoading} className={filter === id ? 'active' : ''} onClick={() => { setFilter(id); setSelected(null); loadUsers(1, query, id).catch((e) => notify(e.message)); }}>{label}<span>{counts[id] ?? '—'}</span></button>
               ))}
             </div>
             <div className="toolbar-controls">
               <label className="search-box">
                 <MagnifyingGlass size={20} />
-                <input aria-label={t('searchUser')} placeholder={t('searchUserPh')} value={query} onChange={(e) => setQuery(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter') loadUsers(1, query); }} />
+                <input disabled={usersLoading} aria-label={t('searchUser')} placeholder={t('searchUserPh')} value={query} onChange={(e) => setQuery(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter') loadUsers(1, query); }} />
               </label>
             </div>
           </div>
@@ -280,11 +287,10 @@ export function AdminPages({ page, token, me, notify, open, onReloadMe }) {
               <thead><tr><th>{t('colUser')}</th><th>{t('colStatus')}</th><th>{t('colSessions')}</th>
                 {[['active', 'colCipher'], ['created_at', 'colCreated'], ['updated_at', 'colUpdated']].map(([key, label]) => (
                   <th key={key} aria-sort={sort === key ? (order === 'asc' ? 'ascending' : 'descending') : 'none'}>
-                    <button className="nowrap" onClick={async () => {
+                    <button className="nowrap" disabled={usersLoading} onClick={async () => {
                       const direction = sort === key && order === 'asc' ? 'desc' : 'asc';
                       try {
-                        await loadUsers(1, query, filter, key, direction);
-                        setSelected(null);
+                        if (await loadUsers(1, query, filter, key, direction)) setSelected(null);
                       } catch (e) { notify(e.message); }
                     }}>{t(label)} {sort === key ? (order === 'asc' ? '↑' : '↓') : '↕'}</button>
                   </th>
@@ -314,9 +320,9 @@ export function AdminPages({ page, token, me, notify, open, onReloadMe }) {
           <div className="table-footer">
             <span>{t('totalUsers', { n: total, size: pageSize })} · {t('userTimeZone')}</span>
             <div>
-              <button className="icon-button" aria-label={t('prevPage')} disabled={pn <= 1} onClick={() => loadUsers(pn - 1, query)}><CaretLeft size={19} /></button>
+              <button className="icon-button" aria-label={t('prevPage')} disabled={usersLoading || pn <= 1} onClick={() => loadUsers(pn - 1, query)}><CaretLeft size={19} /></button>
               <span>{pn} / {pages}</span>
-              <button className="icon-button" aria-label={t('nextPage')} disabled={pn >= pages} onClick={() => loadUsers(pn + 1, query)}><CaretRight size={19} /></button>
+              <button className="icon-button" aria-label={t('nextPage')} disabled={usersLoading || pn >= pages} onClick={() => loadUsers(pn + 1, query)}><CaretRight size={19} /></button>
             </div>
           </div>
         </section>
