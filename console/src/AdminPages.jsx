@@ -133,15 +133,27 @@ function StatsPage({ token }) {
   );
 }
 
+function formatUserTime(value) {
+  if (!value) return '—';
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? '—' : date.toLocaleString('sv-SE', {
+    timeZone: 'Asia/Shanghai', year: 'numeric', month: '2-digit', day: '2-digit',
+    hour: '2-digit', minute: '2-digit', second: '2-digit', hourCycle: 'h23',
+  });
+}
+
 export function AdminPages({ page, token, me, notify, open, onReloadMe }) {
   useI18n();
   const [users, setUsers] = useState([]);
+  const [usersLoading, setUsersLoading] = useState(false);
   const [total, setTotal] = useState(0);
   const [summary, setSummary] = useState(null);
   const pageSize = 50;
   const [pn, setPn] = useState(1);
   const [query, setQuery] = useState('');
   const [filter, setFilter] = useState('all');
+  const [sort, setSort] = useState('created_at');
+  const [order, setOrder] = useState('asc');
   const [selected, setSelected] = useState(null);
   const [sessions, setSessions] = useState([]);
   const [detailTab, setDetailTab] = useState('account');
@@ -151,15 +163,25 @@ export function AdminPages({ page, token, me, notify, open, onReloadMe }) {
   const [outbox, setOutbox] = useState([]);
   const [mail, setMail] = useState(null);
   const drawerRef = useRef(null);
+  const usersRequest = useRef(0);
   const canWrite = me?.role === 'owner' || me?.role === 'admin';
   const isOwner = me?.role === 'owner';
 
-  const loadUsers = async (p = pn, q = query, status = filter) => {
-    const list = await api(`/admin/users?q=${encodeURIComponent(q)}&page=${p}&limit=${pageSize}&status=${status}`, { token });
-    setUsers(list.users || []);
-    setTotal(list.total || 0);
-    setSummary(list.summary);
-    setPn(list.page || p);
+  const loadUsers = async (p = pn, q = query, status = filter, sortBy = sort, direction = order) => {
+    const request = ++usersRequest.current;
+    setUsersLoading(true);
+    try {
+      const list = await api(`/admin/users?q=${encodeURIComponent(q)}&page=${p}&limit=${pageSize}&status=${status}&sort=${sortBy}&order=${direction}`, { token });
+      if (request !== usersRequest.current) return false;
+      setSort(sortBy); setOrder(direction);
+      setUsers(list.users || []);
+      setTotal(list.total || 0);
+      setSummary(list.summary);
+      setPn(list.page || p);
+      return true;
+    } finally {
+      if (request === usersRequest.current) setUsersLoading(false);
+    }
   };
   const loadAll = async () => {
     await loadUsers();
@@ -250,19 +272,30 @@ export function AdminPages({ page, token, me, notify, open, onReloadMe }) {
           <div className="panel-toolbar">
             <div className="tabs" aria-label={t('userStatusFilter')}>
               {[['all', t('filterAll')], ['ok', t('statusOk')], ['banned', t('statusBanned')], ['deleted', t('statusDeleted')]].map(([id, label]) => (
-                <button key={id} className={filter === id ? 'active' : ''} onClick={() => { setFilter(id); setSelected(null); loadUsers(1, query, id).catch((e) => notify(e.message)); }}>{label}<span>{counts[id] ?? '—'}</span></button>
+                <button key={id} disabled={usersLoading} className={filter === id ? 'active' : ''} onClick={() => { setFilter(id); setSelected(null); loadUsers(1, query, id).catch((e) => notify(e.message)); }}>{label}<span>{counts[id] ?? '—'}</span></button>
               ))}
             </div>
             <div className="toolbar-controls">
               <label className="search-box">
                 <MagnifyingGlass size={20} />
-                <input aria-label={t('searchUser')} placeholder={t('searchUserPh')} value={query} onChange={(e) => setQuery(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter') loadUsers(1, query); }} />
+                <input disabled={usersLoading} aria-label={t('searchUser')} placeholder={t('searchUserPh')} value={query} onChange={(e) => setQuery(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter') loadUsers(1, query); }} />
               </label>
             </div>
           </div>
           <div className="table-scroll">
             <table>
-              <thead><tr><th>{t('colUser')}</th><th>{t('colStatus')}</th><th>{t('colSessions')}</th><th>{t('colCipher')}</th><th>{t('colCreated')}</th><th /></tr></thead>
+              <thead><tr><th>{t('colUser')}</th><th>{t('colStatus')}</th><th>{t('colSessions')}</th>
+                {[['active', 'colCipher'], ['created_at', 'colCreated'], ['updated_at', 'colUpdated']].map(([key, label]) => (
+                  <th key={key} aria-sort={sort === key ? (order === 'asc' ? 'ascending' : 'descending') : 'none'}>
+                    <button className="nowrap" disabled={usersLoading} onClick={async () => {
+                      const direction = sort === key && order === 'asc' ? 'desc' : 'asc';
+                      try {
+                        if (await loadUsers(1, query, filter, key, direction)) setSelected(null);
+                      } catch (e) { notify(e.message); }
+                    }}>{t(label)} {sort === key ? (order === 'asc' ? '↑' : '↓') : '↕'}</button>
+                  </th>
+                ))}
+                <th /></tr></thead>
               <tbody>
                 {shown.map((u) => (
                   <tr key={u.user} className={selected === u.user ? 'selected' : ''}>
@@ -275,7 +308,8 @@ export function AdminPages({ page, token, me, notify, open, onReloadMe }) {
                     <td><Badge tone={statusOf(u) === 'ok' ? 'green' : statusOf(u) === 'banned' ? 'amber' : 'neutral'}>{statusLabel(statusOf(u))}</Badge></td>
                     <td className="num">{u.session_count || 0}</td>
                     <td className="num">{(u.active || 0).toLocaleString()}<span className="dim">{t('unitTiao') ? ` ${t('unitTiao')}` : ''}</span></td>
-                    <td className="dim nowrap">{u.created_at || '—'}</td>
+                    <td className="dim nowrap">{formatUserTime(u.created_at)}</td>
+                    <td className="dim nowrap">{formatUserTime(u.updated_at)}</td>
                     <td><button className="icon-button" aria-label={t('viewUser', { user: u.user })} onClick={() => pick(u.user)}><CaretRight size={19} /></button></td>
                   </tr>
                 ))}
@@ -284,11 +318,11 @@ export function AdminPages({ page, token, me, notify, open, onReloadMe }) {
             {!shown.length && <Empty />}
           </div>
           <div className="table-footer">
-            <span>{t('totalUsers', { n: total, size: pageSize })}</span>
+            <span>{t('totalUsers', { n: total, size: pageSize })} · {t('userTimeZone')}</span>
             <div>
-              <button className="icon-button" aria-label={t('prevPage')} disabled={pn <= 1} onClick={() => loadUsers(pn - 1, query)}><CaretLeft size={19} /></button>
+              <button className="icon-button" aria-label={t('prevPage')} disabled={usersLoading || pn <= 1} onClick={() => loadUsers(pn - 1, query)}><CaretLeft size={19} /></button>
               <span>{pn} / {pages}</span>
-              <button className="icon-button" aria-label={t('nextPage')} disabled={pn >= pages} onClick={() => loadUsers(pn + 1, query)}><CaretRight size={19} /></button>
+              <button className="icon-button" aria-label={t('nextPage')} disabled={usersLoading || pn >= pages} onClick={() => loadUsers(pn + 1, query)}><CaretRight size={19} /></button>
             </div>
           </div>
         </section>
@@ -312,7 +346,8 @@ export function AdminPages({ page, token, me, notify, open, onReloadMe }) {
                 <>
                   <dl className="details">
                     <div><dt>{t('emailAddr')}</dt><dd>{current.email || t('unbound')}</dd></div>
-                    <div><dt>{t('colCreated')}</dt><dd>{current.created_at || '—'}</dd></div>
+                    <div><dt>{t('colCreated')}</dt><dd>{formatUserTime(current.created_at)}</dd></div>
+                    <div><dt>{t('colUpdated')}</dt><dd>{formatUserTime(current.updated_at)}</dd></div>
                     <div><dt>{t('colCipher')}</dt><dd>{t('nItems', { n: current.active || 0 })}</dd></div>
                     <div><dt>{t('mainToken')}</dt><dd><code>{current.token_masked || '—'}</code></dd></div>
                   </dl>
