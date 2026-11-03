@@ -46,6 +46,7 @@ try{
   const pluginCards=page.locator('[data-plugin-card]');
   assert.equal(await pluginCards.count(),pluginPaths.length);
   assert.deepEqual(await pluginCards.evaluateAll(nodes=>nodes.map(node=>node.getAttribute('href'))),pluginPaths.map(path=>docsOrigin+path));
+  assert.equal(await page.getByRole('link',{name:'Download',exact:true}).getAttribute('href'),base+'download/');
   await page.locator('[data-memory-body]').waitFor();
   await page.waitForFunction(()=>['ready','fallback','unavailable','setup-error'].includes(document.querySelector('[data-gpu-status]')?.dataset.gpuStatus));
   const gpuStatus=await page.locator('[data-gpu-status]').getAttribute('data-gpu-status');
@@ -64,6 +65,7 @@ try{
   assert.equal(await page.locator('[data-plugin="zcode"]').getAttribute('href'),docsOrigin+'/zh/plugins/zcode');
   await page.reload();
   assert.match(await page.locator('h1').innerText(),/记忆/);
+  assert.equal(await page.getByRole('link',{name:'下载',exact:true}).getAttribute('href'),base+'zh/download/');
   await page.setViewportSize({width:390,height:844});
   assert.ok(await page.evaluate(()=>document.documentElement.scrollWidth<=window.innerWidth+1));
   const menu=page.getByRole('button',{name:'切换导航',exact:true});
@@ -73,6 +75,45 @@ try{
   await page.emulateMedia({reducedMotion:'reduce'});await page.reload();
   await page.locator('[data-memory-body] [data-gpu-status="ready"]').waitFor();
   await page.waitForFunction(()=>document.querySelector('.memory-narrative')?.dataset.threadProgress==='1.000');
+  // Desktop client download page. ?os=&arch= pins detection so the checks
+  // are independent of the machine running them.
+  const dlAssets=['respire-darwin-arm64.zip','respire-darwin-amd64.zip','respire-windows-amd64.exe','respire-windows-arm64.exe','respire-linux-amd64.tar.gz','respire-linux-arm64.tar.gz'];
+  const assetOrigin='https://github.com/risense-ai/respire-client2/releases/latest/download/';
+  const dl=await context.newPage();
+  dl.on('pageerror',e=>errors.push(e.message));
+  await dl.goto(origin+base+'download/');
+  await dl.getByRole('heading',{level:1}).waitFor();
+  assert.match(await dl.locator('h1').innerText(),/Download Respire/);
+  assert.equal(await dl.locator('html').getAttribute('lang'),'en');
+  assert.equal(await dl.locator('[data-download-grid] .download-group').count(),3);
+  for(const asset of dlAssets)assert.equal(await dl.locator(`[data-download-grid] [data-download-link][data-asset="${asset}"]`).getAttribute('href'),assetOrigin+asset);
+  assert.equal(await dl.locator('[data-auto-countdown]').count(),0,'automated browsers must not trigger the countdown download');
+  await dl.goto(origin+base+'download/?os=linux&arch=amd64');
+  await dl.getByRole('heading',{level:1}).waitFor();
+  assert.equal(await dl.locator('[data-download-recommend]').getAttribute('data-recommended-asset'),'respire-linux-amd64.tar.gz');
+  assert.equal(await dl.locator('[data-os="linux"]').getAttribute('data-recommended-group'),'');
+  assert.equal(await dl.locator('[data-download-grid] [data-download-link][data-asset="respire-linux-amd64.tar.gz"][data-recommended]').count(),1);
+  await dl.goto(origin+base+'download/?os=windows&arch=arm64');
+  await dl.getByRole('heading',{level:1}).waitFor();
+  assert.equal(await dl.locator('[data-download-recommend]').getAttribute('data-recommended-asset'),'respire-windows-arm64.exe');
+  await dl.goto(origin+base+'download/?os=darwin&arch=none');
+  await dl.getByRole('heading',{level:1}).waitFor();
+  assert.equal(await dl.locator('[data-download-recommend]').count(),0,'unknown architecture must not auto-pick a build');
+  assert.equal(await dl.locator('[data-arch-hint]').count(),1);
+  assert.equal(await dl.locator('[data-os="darwin"]').getAttribute('data-recommended-group'),'');
+  assert.equal(await dl.locator('[data-download-grid] .download-card[data-suggested]').count(),2);
+  await dl.locator('[data-mirror-toggle]').click();
+  assert.equal(await dl.locator('[data-download-grid] [data-download-link][data-asset="respire-darwin-arm64.zip"]').getAttribute('href'),'https://gh-proxy.com/'+assetOrigin+'respire-darwin-arm64.zip');
+  await dl.locator('[data-mirror-toggle]').click();
+  assert.equal(await dl.locator('[data-download-grid] [data-download-link][data-asset="respire-darwin-arm64.zip"]').getAttribute('href'),assetOrigin+'respire-darwin-arm64.zip');
+  await dl.goto(origin+base+'zh/download/?os=linux&arch=amd64');
+  await dl.getByRole('heading',{level:1}).waitFor();
+  assert.equal(await dl.locator('html').getAttribute('lang'),'zh-CN');
+  assert.match(await dl.locator('h1').innerText(),/下载 Respire/);
+  assert.equal(await dl.locator('[data-download-recommend]').getAttribute('data-recommended-asset'),'respire-linux-amd64.tar.gz');
+  assert.equal(await dl.getByRole('link',{name:'返回首页',exact:true}).getAttribute('href'),base);
+  await dl.setViewportSize({width:390,height:844});
+  assert.ok(await dl.evaluate(()=>document.documentElement.scrollWidth<=window.innerWidth+1));
   assert.deepEqual(errors,[]);
-  console.log(JSON.stringify({passed:true,base,gpu_status:gpuStatus,checks:['exact public build provenance','English rendering','production links','installation','plugin guides','no demo notices','animation pause/resume','FAQ','Chinese URL and reload','mobile overflow/menu','reduced motion','no page errors']}));
+  console.log(JSON.stringify({passed:true,base,gpu_status:gpuStatus,checks:['exact public build provenance','English rendering','production links','installation','plugin guides','download nav link','no demo notices','animation pause/resume','FAQ','Chinese URL and reload','mobile overflow/menu','reduced motion','download page en/zh rendering','download platform detection','download asset links and mirror toggle','no page errors']}));
 }finally{await browser.close();await new Promise(r=>server.close(r));}

@@ -4,5 +4,10 @@ export const ADMIN_URL=import.meta.env.VITE_ADMIN_URL || 'https://admin.rsrs.rs'
 const DOCS_ORIGIN=(import.meta.env.VITE_DOCS_URL || 'https://docs.rsrs.rs').replace(/\/+$/,'');
 export const DOCS_URL=DOCS_ORIGIN;
 export const docsUrl=(lang:'en'|'zh',path:string)=>`${DOCS_ORIGIN}${lang==='zh'?'/zh':''}${path.startsWith('/')?path:`/${path}`}`;
+export const CLIENT_REPO_URL='https://github.com/risense-ai/respire-client2';
+export const CLIENT_RELEASES_URL=`${CLIENT_REPO_URL}/releases`;
+export const CLIENT_ASSET_MIRROR='https://gh-proxy.com/';
+export const clientAssetUrl=(asset:string,mirror:boolean=false)=>`${mirror?CLIENT_ASSET_MIRROR:''}${CLIENT_REPO_URL}/releases/latest/download/${asset}`;
+export const downloadUrl=(lang:'en'|'zh')=>`${SITE_BASE}${lang==='zh'?'zh/':''}download/`;
 export const SCULPTURE_URL=`${SITE_BASE}memory-fiber-sculpture.png`;
 export const MEMORY_CLOUD_URL=`${SITE_BASE}memory-cloud.bin`;
