@@ -2,8 +2,9 @@ import { useEffect, useRef } from 'react';
 import type { MemoryFishHandle } from './memory-fish';
 
 /*
- * Foreground host for the two memory-fish. The layer is fixed to the viewport,
- * sits above the page content, and never accepts pointer events. The module is
+ * Foreground host for the four memory-fish. The layer is fixed to the viewport,
+ * sits above the page content, and never accepts pointer events (the fish
+ * module observes the cursor on `window` instead). The module is
  * lazily imported so the main bundle stays lean; reduced motion, tab visibility
  * and offscreen state all pause or freeze the animation.
  */
