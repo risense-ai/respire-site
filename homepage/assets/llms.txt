@@ -1,0 +1,24 @@
+# Respire
+
+> Respire is a local-first memory layer for AI tools. It keeps context, preferences and decisions on your device, with optional encrypted synchronization.
+
+## Product
+
+- [Respire overview](https://rsrs.rs/): Explains the local memory layer, supported workflows, privacy boundaries and plugin integrations.
+- [Download Respire](https://rsrs.rs/download/): Desktop downloads for macOS, Windows and Linux, including platform requirements and checksums.
+- [CLI repository](https://github.com/risense-ai/respire-cli): Source, releases and installation for the rsrs command-line interface.
+
+## Documentation
+
+- [Documentation overview](https://docs.rsrs.rs/): Components, architecture and links to user and developer guides.
+- [Getting started](https://docs.rsrs.rs/getting-started): Install the desktop client or CLI, connect the Runtime and create a memory.
+- [AI tool plugins](https://docs.rsrs.rs/plugins/): Installation, configuration and troubleshooting for supported AI hosts.
+- [CLI commands](https://docs.rsrs.rs/cli): Command-line workflows for memory, synchronization and administration.
+- [Architecture](https://docs.rsrs.rs/architecture): Local storage, retrieval, encryption and synchronization design.
+- [Frequently asked questions](https://docs.rsrs.rs/faq): Answers about security, models, accounts, injection and compatibility.
+- [中文文档](https://docs.rsrs.rs/zh/): Respire 的中文产品文档、安装指南、接口说明与架构资料。
+
+## Source
+
+- [Respire repositories](https://docs.rsrs.rs/repos): Official source repositories for the CLI, desktop client, server and integrations.
+- [Respire on GitHub](https://github.com/risense-ai): Official organization for Respire source code and releases.

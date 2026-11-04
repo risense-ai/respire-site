@@ -11,3 +11,9 @@
 
 /zh/
   Cache-Control: no-cache
+
+/download/
+  Cache-Control: no-cache
+
+/zh/download/
+  Cache-Control: no-cache
