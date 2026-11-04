@@ -11,6 +11,7 @@ const vite = await createServer({
   configFile: false,
   publicDir: false,
   logLevel: 'error',
+  base: process.env.VITE_SITE_BASE || '/',
   server: { middlewareMode: true, ws: false, watch: null },
   appType: 'custom',
   resolve: { dedupe: ['react', 'react-dom'] },
