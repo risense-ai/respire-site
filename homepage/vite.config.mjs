@@ -72,6 +72,66 @@ function localize(html, locale, page) {
     `<link rel="alternate" hreflang="x-default" href="${BASE}${pathSuffix}" />`,
   ].join('\n    ');
   const canonical = `https://rsrs.rs${locale === "en" ? `${page.path === "/" ? "/" : `/${page.path}`}` : `/zh/${pathSuffix}`}`;
+  const schema = page.path === "/" ? {
+    "@context": "https://schema.org",
+    "@graph": [
+      {
+        "@type": "Organization",
+        "@id": "https://rsrs.rs/#organization",
+        name: "Respire",
+        url: "https://rsrs.rs/",
+        logo: "https://rsrs.rs/favicon.svg",
+        sameAs: ["https://github.com/risense-ai"],
+      },
+      {
+        "@type": "WebSite",
+        "@id": "https://rsrs.rs/#website",
+        name: "Respire",
+        url: "https://rsrs.rs/",
+        publisher: { "@id": "https://rsrs.rs/#organization" },
+        inLanguage: ["en", "zh-Hans"],
+      },
+      {
+        "@type": "SoftwareApplication",
+        name: "Respire",
+        url: canonical,
+        description: head.description,
+        applicationCategory: "DeveloperApplication",
+        operatingSystem: "macOS, Windows, Linux",
+        downloadUrl: "https://rsrs.rs/download/",
+        isAccessibleForFree: true,
+        offers: { "@type": "Offer", price: 0, priceCurrency: "USD" },
+        author: { "@id": "https://rsrs.rs/#organization" },
+      },
+    ],
+  } : {
+    "@context": "https://schema.org",
+    "@type": "SoftwareApplication",
+    name: "Respire desktop client",
+    url: canonical,
+    description: head.description,
+    applicationCategory: "DeveloperApplication",
+    operatingSystem: "macOS, Windows, Linux",
+    downloadUrl: canonical,
+    isAccessibleForFree: true,
+    offers: { "@type": "Offer", price: 0, priceCurrency: "USD" },
+    author: { "@type": "Organization", name: "Respire", url: "https://rsrs.rs/" },
+  };
+  const discovery = [
+    '<meta name="robots" content="index,follow,max-image-preview:large" />',
+    '<meta property="og:site_name" content="Respire" />',
+    '<meta property="og:type" content="website" />',
+    `<meta property="og:title" content="${head.title}" />`,
+    `<meta property="og:description" content="${head.description}" />`,
+    `<meta property="og:url" content="${canonical}" />`,
+    '<meta property="og:image" content="https://rsrs.rs/memory-fiber-sculpture.png" />',
+    `<meta property="og:locale" content="${locale === "zh" ? "zh_CN" : "en_US"}" />`,
+    '<meta name="twitter:card" content="summary_large_image" />',
+    `<meta name="twitter:title" content="${head.title}" />`,
+    `<meta name="twitter:description" content="${head.description}" />`,
+    '<meta name="twitter:image" content="https://rsrs.rs/memory-fiber-sculpture.png" />',
+    `<script type="application/ld+json">${JSON.stringify(schema)}</script>`,
+  ].join('\n    ');
   return html
     .replace(/<html lang="[^"]*"/, `<html lang="${head.lang}"`)
     .replace(/<title>[\s\S]*?<\/title>/, `<title>${head.title}</title>`)
@@ -79,7 +139,7 @@ function localize(html, locale, page) {
       /(<meta name="description" content=")[^"]*(")/,
       `$1${head.description.replace(/"/g, '&quot;')}$2`,
     )
-    .replace('<!-- locale:hreflang -->', `<link rel="canonical" href="${canonical}" />\n    ${alternates}`);
+    .replace('<!-- locale:hreflang -->', `<link rel="canonical" href="${canonical}" />\n    ${alternates}\n    ${discovery}`);
 }
 
 /// Write the default entry in place and other entries in locale directories.

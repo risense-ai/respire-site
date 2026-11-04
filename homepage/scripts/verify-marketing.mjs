@@ -13,7 +13,7 @@ assert.equal(metadata.site_revision,buildProvenance(process.cwd()).site_revision
 assert.equal(metadata.target,'homepage');
 assert.equal(metadata.base,base);
 if(process.env.CI)assert.equal(metadata.source_tree_dirty,false,'CI homepage artifacts must come from clean source');
-const types={'.html':'text/html','.js':'text/javascript','.css':'text/css','.svg':'image/svg+xml','.png':'image/png','.json':'application/json'};
+const types={'.html':'text/html','.js':'text/javascript','.css':'text/css','.svg':'image/svg+xml','.png':'image/png','.json':'application/json','.xml':'application/xml','.txt':'text/plain'};
 const server=createServer((req,res)=>{
   const url=new URL(req.url,'http://localhost');
   if(!url.pathname.startsWith(base)){res.writeHead(404).end();return;}
@@ -32,6 +32,24 @@ try{
   const provenance=await context.request.get(origin+base+'build-info.json');
   assert.equal(provenance.status(),200);
   assert.deepEqual(await provenance.json(),metadata);
+  for(const file of ['robots.txt','llms.txt','sitemap.xml']){
+    const response=await context.request.get(origin+base+file);
+    assert.equal(response.status(),200);
+    assert.match(response.headers()['content-type'],file.endsWith('.xml')?/application\/xml/:/text\/plain/);
+    assert.doesNotMatch(await response.text(),/<!DOCTYPE html>/i,`${file} must not use the SPA fallback`);
+  }
+  for(const [path,lang,heading] of [['','en','Memory as'],['zh/','zh-CN','记忆'],['download/','en','Download Respire'],['zh/download/','zh-CN','下载 Respire']]){
+    const raw=await (await context.request.get(origin+base+path)).text();
+    assert.match(raw,/<h1[^>]*>/,`${path} needs a pre-rendered H1`);
+    assert.ok(raw.includes(heading),`${path} needs pre-rendered localized content`);
+    assert.ok(raw.includes(`lang="${lang}"`));
+    assert.ok(raw.includes(`href="https://rsrs.rs/${path}"`),`${path} needs a self-referencing canonical`);
+    assert.ok(raw.includes('hreflang="en"')&&raw.includes('hreflang="zh-Hans"')&&raw.includes('hreflang="x-default"'));
+    assert.ok(raw.includes('application/ld+json'));
+    assert.ok(raw.includes('og:image'));
+    assert.ok((raw.match(/<a /g)||[]).length>=10,`${path} needs crawlable links`);
+    assert.ok(raw.indexOf('<meta charset="UTF-8"')<1024);
+  }
   const page=await context.newPage();
   page.on('pageerror',e=>errors.push(e.message));
   await page.goto(origin+base);

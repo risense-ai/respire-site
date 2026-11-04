@@ -51,8 +51,8 @@ export async function detectArch():Promise<Arch|null>{
 function formatSize(bytes:number){return bytes>=1073741824?`${(bytes/1073741824).toFixed(1)} GB`:`${Math.round(bytes/1048576)} MB`;}
 function Mark({small=false}:{small?:boolean}){return <svg className={small?'mark small':'mark'} viewBox="0 0 52 44" aria-hidden="true"><path d="M3 23C10 22 9 6 18 7S32 40 41 36c4-2 6-8 8-12" fill="none" stroke="currentColor" strokeWidth="1.7"/><path d="M3 25C9 14 13 10 19 14s11 24 20 20c5-2 7-6 10-9" fill="none" stroke="#a93021" strokeWidth="1.4"/></svg>}
 
-export default function DownloadApp(){
-  const [lang,setLang]=useState<Lang>(()=>new URLSearchParams(window.location.search).get('lang')==='zh'||window.location.pathname.includes('/zh/')?'zh':'en');
+export default function DownloadApp({initialLang}:{initialLang?:Lang}={}){
+  const [lang,setLang]=useState<Lang>(()=>initialLang??(new URLSearchParams(window.location.search).get('lang')==='zh'||window.location.pathname.includes('/zh/')?'zh':'en'));
   const [mirror,setMirror]=useState(false);
   const [platform,setPlatform]=useState<{os:Os|null;arch:Arch|null}>({os:null,arch:null});
   const [release,setRelease]=useState<Release|null>(null);
