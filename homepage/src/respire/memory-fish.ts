@@ -155,9 +155,9 @@ const PANIC_ZIGZAG_RATE = 13;
 const BEND_GAIN = 0.55;
 const BEND_RATE = 5;
 const FLUTTER_AMP = 2.4;
-/** Breathing: thickness swells ±22% per breath; size drifts ±9% slower. */
+/** Breathing: the body swells locally; overall size drifts by only 4%. */
 const BREATH_AMP = 0.22;
-const SIZE_AMP = 0.09;
+const SIZE_AMP = 0.04;
 const DART_MIN = 7;
 const DART_MAX = 16;
 /** Max node distance from the fish origin, as a multiple of its length. */
@@ -366,7 +366,7 @@ function buildFish(spec: FishSpec): { nodes: NodeDesc[]; edges: Array<[number, n
 /** Accumulate the waved spine in fish-local space: head at (0,0), body toward
  * -x. `bend` (-1..1) adds a sustained arc that grows toward the tail, so the
  * body curves into turns instead of rotating rigidly. */
-function buildSpine(spec: FishSpec, phase: number, amp: number, bend = 0): Vec[] {
+function buildSpine(spec: FishSpec, phase: number, amp: number, bend: number, breathPhase: number): Vec[] {
   const seg = spec.length / (SPINE_SEGMENTS - 1);
   const points: Vec[] = [{ x: 0, y: 0 }];
   let x = 0;
@@ -377,8 +377,10 @@ function buildSpine(spec: FishSpec, phase: number, amp: number, bend = 0): Vec[]
     const theta = spec.waveAmp * amp * env * Math.sin(phase - spec.waveK * s)
       + bend * BEND_GAIN * Math.pow(s, 1.3);
     const angle = Math.PI + theta;
-    x += seg * Math.cos(angle);
-    y += seg * Math.sin(angle);
+    // The body shortens slightly as each section expands, keeping the head steady.
+    const length = seg * (1 - 0.025 * Math.sin(breathPhase - s * 1.15));
+    x += length * Math.cos(angle);
+    y += length * Math.sin(angle);
     points.push({ x, y });
   }
   return points;
@@ -596,7 +598,7 @@ export function startMemoryFish(host: HTMLElement, options: MemoryFishOptions = 
       if (dist < 34) desired += f.spec.turnSign * Math.PI * 0.5;
       desired += spec.wobble * Math.sin(time * spec.wanderFreq + f.wobbleSeed);
 
-      if (f.scare > 0.01) {
+      if (pointer.active && f.scare > 0.01) {
         const away = Math.atan2(f.pos.y - pointer.y, f.pos.x - pointer.x);
         desired += angleDelta(desired, away) * f.scare * FLEE_STEER;
       }
@@ -656,25 +658,27 @@ export function startMemoryFish(host: HTMLElement, options: MemoryFishOptions = 
   };
 
   const drawFish = (f: Fish): void => {
-    const spine = buildSpine(f.spec, f.wavePhase, f.amp, f.bend);
+    const spine = buildSpine(f.spec, f.wavePhase, f.amp, f.bend, f.breathPhase);
     const frames = framesOf(spine);
-    const screen: Vec[] = f.nodes.map((node, i) => {
+    const screen: Vec[] = f.nodes.map((node) => {
       const s = spine[node.attach];
       const fr = frames[node.attach];
+      const station = sAt(node.attach);
+      const breath = Math.sin(f.breathPhase - station * 1.15);
+      const fullness = 1 + BREATH_AMP * breath * (0.3 + 0.7 * Math.sin(Math.PI * station));
       let offT = node.t;
-      let offN = node.n;
+      let offN = node.n * fullness;
+      if (node.flutter) {
+        // Paired fin tips open together, with a short delay behind the body.
+        const spread = 1 + 0.12 * Math.sin(f.breathPhase - station * 1.15 - 0.65);
+        offN = offN * spread + Math.sign(node.n) * Math.sin(f.wavePhase * 1.45 - station * 3) * FLUTTER_AMP * node.flutter;
+      }
       if (node.swing) {
         const a = f.tailSwing * node.swing;
         const ca = Math.cos(a);
         const sa = Math.sin(a);
-        offT = node.t * ca - node.n * sa;
-        offN = (node.t * sa + node.n * ca) * f.thickness;
-      } else if (node.flutter) {
-        // Fins flutter on their own phase, riding the breathing thickness.
-        offN = offN * f.thickness + Math.sin(f.wavePhase * 1.45 + i * 1.15) * FLUTTER_AMP * node.flutter;
-      } else {
-        // The whole outline swells and slims with the breath cycle.
-        offN *= f.thickness;
+        offT = node.t * ca - offN * sa;
+        offN = node.t * sa + offN * ca;
       }
       return transform(f, {
         x: s.x + fr.t.x * offT + fr.n.x * offN,
