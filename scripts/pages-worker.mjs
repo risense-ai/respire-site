@@ -6,12 +6,11 @@ export default {
     if (!target) {
       const response = await env.ASSETS.fetch(request);
       const isHtml = response.status === 200 && response.headers.get('content-type')?.includes('text/html');
-      if (url.pathname === '/404.html') {
-        return new Response(response.body, { status: 404, headers: response.headers });
-      }
+      const errorPage = ['/404', '/404.html'].includes(url.pathname);
       const knownPage = ['/', '/zh/', '/download/', '/zh/download/', '/index.html', '/zh/index.html', '/download/index.html', '/zh/download/index.html'].includes(url.pathname);
-      if (!isHtml || knownPage) return response;
-      const notFoundUrl = new URL('/404.html', url);
+      if (!errorPage && (!isHtml || knownPage)) return response;
+      // Pages redirects .html assets; fetch the pretty path to retain the body.
+      const notFoundUrl = new URL('/404', url);
       const notFound = await env.ASSETS.fetch(new Request(notFoundUrl, request));
       return new Response(notFound.body, { status: 404, headers: notFound.headers });
     }
