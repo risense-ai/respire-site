@@ -3,7 +3,18 @@ export default {
   async fetch(request, env) {
     const url = new URL(request.url);
     const target = consoleHosts[url.hostname];
-    if (!target) return env.ASSETS.fetch(request);
+    if (!target) {
+      const response = await env.ASSETS.fetch(request);
+      const isHtml = response.status === 200 && response.headers.get('content-type')?.includes('text/html');
+      if (url.pathname === '/404.html') {
+        return new Response(response.body, { status: 404, headers: response.headers });
+      }
+      const knownPage = ['/', '/zh/', '/download/', '/zh/download/', '/index.html', '/zh/index.html', '/download/index.html', '/zh/download/index.html'].includes(url.pathname);
+      if (!isHtml || knownPage) return response;
+      const notFoundUrl = new URL('/404.html', url);
+      const notFound = await env.ASSETS.fetch(new Request(notFoundUrl, request));
+      return new Response(notFound.body, { status: 404, headers: notFound.headers });
+    }
     if (!['GET', 'HEAD'].includes(request.method)) {
       return new Response('Frontend requests must use the configured API origin', { status: 405, headers: { Allow: 'GET, HEAD' } });
     }

@@ -61,17 +61,18 @@ const PAGES = [
 
 /// Localize a generated page's head using its hreflang placeholder.
 ///
-/// Use relative alternate-language links across development and production.
-/// Links resolve against the current document origin.
+/// hreflang requires absolute URLs; relative alternates are ignored by crawlers.
 function localize(html, locale, page) {
   const head = page.head[locale];
   const pathSuffix = page.path === "/" ? "" : page.path;
+  const suffix = pathSuffix === "" ? "/" : `/${pathSuffix}`;
+  const origin = "https://rsrs.rs";
   const alternates = [
-    `<link rel="alternate" hreflang="en" href="${BASE}${pathSuffix}" />`,
-    `<link rel="alternate" hreflang="zh-Hans" href="${BASE}zh/${pathSuffix}" />`,
-    `<link rel="alternate" hreflang="x-default" href="${BASE}${pathSuffix}" />`,
+    `<link rel="alternate" hreflang="en" href="${origin}${suffix}" />`,
+    `<link rel="alternate" hreflang="zh-Hans" href="${origin}/zh${suffix}" />`,
+    `<link rel="alternate" hreflang="x-default" href="${origin}${suffix}" />`,
   ].join('\n    ');
-  const canonical = `https://rsrs.rs${locale === "en" ? `${page.path === "/" ? "/" : `/${page.path}`}` : `/zh/${pathSuffix}`}`;
+  const canonical = `${origin}${locale === "en" ? suffix : `/zh${suffix}`}`;
   const schema = page.path === "/" ? {
     "@context": "https://schema.org",
     "@graph": [

@@ -14,7 +14,7 @@ const plugins=[
 export default function Plugins({lang}:{lang:Lang}){
   const t=(a:string,b:string)=>lang==='en'?a:b;
   return <section className="plugins-section" id="plugins">
-    <div className="section-kicker"><span>{t('CONNECT / PLUGIN ECOSYSTEM','连接 / 插件生态')}</span><span>{t('EIGHT HOSTS. ONE MEMORY.','八个宿主，一份记忆。')}</span></div>
+    <div className="section-kicker"><span>{t('CONNECT / PLUGIN ECOSYSTEM','连接 / 插件生态')}</span><span>{t('EIGHT FEATURED HOSTS. THIRTEEN SUPPORTED.','八个常用宿主，十三个已支持。')}</span></div>
     <div className="plugins-heading">
       <h2>{t('Plugins for the agents','为你正在使用的智能体')}<br/><em>{t('you already use.','装上记忆。')}</em></h2>
       <p>{t('Native adapters bring the same local memory layer into the hosts you already work in. Open the setup guide for your client.','原生适配把同一套本地记忆层带进你正在使用的宿主。打开对应客户端的使用指南。')}</p>
@@ -27,6 +27,6 @@ export default function Plugins({lang}:{lang:Lang}){
         <span className="plugin-link">{t('Read the guide','查看使用指南')}<ArrowUpRight size={14}/></span>
       </a>)}
     </div>
-    <a className="plugins-all" href={docsUrl(lang,'/plugins/')} target="_blank" rel="noopener noreferrer">{t('Browse all plugin guides','浏览全部插件文档')}<ArrowUpRight size={14}/></a>
+    <a className="plugins-all" href={docsUrl(lang,'/plugins/')} target="_blank" rel="noopener noreferrer">{t('Browse all 13 plugin guides','浏览全部 13 个插件文档')}<ArrowUpRight size={14}/></a>
   </section>;
 }
