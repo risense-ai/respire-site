@@ -16,9 +16,36 @@
 - [CLI commands](https://docs.rsrs.rs/cli): Command-line workflows for memory, synchronization and administration.
 - [Architecture](https://docs.rsrs.rs/architecture): Local storage, retrieval, encryption and synchronization design.
 - [Frequently asked questions](https://docs.rsrs.rs/faq): Answers about security, models, accounts, injection and compatibility.
+- [Product FAQ](https://rsrs.rs/#faq): What Respire is, where memory lives, access scope and how to start.
+
+## Plugins
+
+- [Plugin guides](https://docs.rsrs.rs/plugins/): All 13 supported hosts, installation paths and Stop contracts.
+- [ZCode](https://docs.rsrs.rs/plugins/zcode): Marketplace plugin with recall, prefix storage and a Stop storage check.
+- [Kimi Code](https://docs.rsrs.rs/plugins/kimi): Hooks with per-turn recall and prefix storage.
+- [Dim](https://docs.rsrs.rs/plugins/dimcode): Marketplace plugin with session rules and storage checks.
+- [Qoder](https://docs.rsrs.rs/plugins/qoder): Hooks with recall, storage and a closing check.
+- [WorkBuddy](https://docs.rsrs.rs/plugins/workbuddy): Plugin with session rules and bounded reminders.
+- [Hermes](https://docs.rsrs.rs/plugins/hermes): Directory memory provider for Hermes Agent.
+- [Codex](https://docs.rsrs.rs/plugins/codex): Native plugin with recall, explicit store and Stop reminders.
+- [Pi](https://docs.rsrs.rs/plugins/pi): Native extension with recall and end-of-turn review.
+- [DSH](https://docs.rsrs.rs/plugins/dsh): Native memory plugin for DeepSeek Harness.
+- [Magpie](https://docs.rsrs.rs/plugins/magpie): Connects Magpie to the local Runtime and archives completed turns.
+- [OpenClaw](https://docs.rsrs.rs/plugins/openclaw): Plugin with recall, prefix storage and session hooks.
+- [MiniMax Code](https://docs.rsrs.rs/plugins/minimax-code): Plugin with a skill, MCP server and lifecycle hooks.
+- [General](https://docs.rsrs.rs/plugins/general): Portable Agent Plugins 1.0 package with a skill and MCP server.
+
+## Chinese
+
+- [中文首页](https://rsrs.rs/zh/): Respire 的中文产品介绍、插件与下载入口。
+- [中文下载](https://rsrs.rs/zh/download/): macOS、Windows 与 Linux 桌面客户端。
 - [中文文档](https://docs.rsrs.rs/zh/): Respire 的中文产品文档、安装指南、接口说明与架构资料。
+- [中文插件指南](https://docs.rsrs.rs/zh/plugins/): 各 AI 宿主的安装、配置与故障排查。
+
+## Contact
+
+- [GitHub organization](https://github.com/risense-ai): Source, releases and issue trackers.
 
 ## Source
 
 - [Respire repositories](https://docs.rsrs.rs/repos): Official source repositories for the CLI, desktop client, server and integrations.
-- [Respire on GitHub](https://github.com/risense-ai): Official organization for Respire source code and releases.
