@@ -45,16 +45,26 @@ test('download page exposes every client platform build',()=>{
   const download=read('../src/respire/download.tsx');
   const headers=read('../assets/_headers');
   assert.ok(destinations.includes('https://github.com/risense-ai/respire-client2'));
-  assert.ok(destinations.includes('releases/latest/download'));
+  assert.ok(destinations.includes('releases/download'));
+  assert.ok(destinations.includes('CLIENT_RELEASE_TAG'));
   assert.ok(destinations.includes('clientAssetUrl'));
   assert.ok(destinations.includes('downloadUrl'));
-  assert.ok(download.includes('https://api.github.com/repos/risense-ai/respire-client2/releases/latest'));
-  assert.ok(download.includes('gh-proxy.com'));
-  for(const file of ['respire-darwin-arm64.zip','respire-darwin-amd64.zip','respire-windows-amd64.exe','respire-windows-arm64.exe','respire-linux-amd64.tar.gz','respire-linux-arm64.tar.gz']){
+  assert.ok(download.includes('https://api.github.com/repos/risense-ai/respire-client2/releases/tags/'));
+  assert.ok(download.includes('CLIENT_RELEASE_TAG'));
+  assert.ok(download.includes('gh-proxy.com')||destinations.includes('gh-proxy.com'));
+  for(const file of ['respire-darwin-arm64.dmg','respire-darwin-arm64.zip','respire-darwin-amd64.zip','respire-windows-amd64-setup.exe','respire-windows-amd64.exe','respire-windows-arm64-setup.exe','respire-windows-arm64.exe','respire-linux-amd64.tar.gz','respire-linux-arm64.tar.gz']){
     assert.ok(download.includes(`'${file}'`),`missing download asset ${file}`);
   }
   assert.ok(headers.includes('/download/'));
   assert.ok(headers.includes('/zh/download/'));
+});
+test('installer assets are recommended and stay on a pinned release',()=>{
+  const destinations=read('../src/destinations.ts');
+  const download=read('../src/respire/download.tsx');
+  assert.match(destinations,/CLIENT_RELEASE_TAG='v\d+\.\d+\.\d+[^']*'/);
+  assert.ok(!destinations.includes('releases/latest/download'),'installer links must not rely on the stable latest alias');
+  assert.ok(download.indexOf("respire-windows-amd64-setup.exe")<download.indexOf("respire-windows-amd64.exe"),'Windows installer must precede the portable EXE');
+  assert.ok(download.indexOf("respire-darwin-arm64.dmg")<download.indexOf("respire-darwin-arm64.zip"),'DMG must precede the macOS ZIP');
 });
 test('homepage and install section link the download page',()=>{
   const app=read('../src/App.tsx');

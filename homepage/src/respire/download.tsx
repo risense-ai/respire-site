@@ -1,30 +1,39 @@
-import {SITE_BASE,CLIENT_REPO_URL,CLIENT_RELEASES_URL,clientAssetUrl,docsUrl} from '../destinations';
+import {SITE_BASE,CLIENT_REPO_URL,CLIENT_RELEASES_URL,CLIENT_RELEASE_TAG,CLIENT_RELEASE_URL,clientAssetUrl,docsUrl} from '../destinations';
 import {useState,useEffect} from 'react';
 import {Apple,AppWindow,Terminal,Download,Check,Cpu,ShieldCheck} from 'lucide-react';
 
 type Lang='en'|'zh';
 type Os='darwin'|'windows'|'linux';
 type Arch='amd64'|'arm64';
+type Kind='installer'|'portable';
 type Release={tag_name:string;published_at:string;assets:{name:string;size:number}[]};
 type UaHints={architecture?:string;bitness?:string};
+type Asset={os:Os;arch:Arch;file:string;kind:Kind};
 
-const RELEASE_API='https://api.github.com/repos/risense-ai/respire-client2/releases/latest';
-const ASSETS:{os:Os;arch:Arch;file:string}[]=[
-  {os:'darwin',arch:'arm64',file:'respire-darwin-arm64.zip'},
-  {os:'darwin',arch:'amd64',file:'respire-darwin-amd64.zip'},
-  {os:'windows',arch:'amd64',file:'respire-windows-amd64.exe'},
-  {os:'windows',arch:'arm64',file:'respire-windows-arm64.exe'},
-  {os:'linux',arch:'amd64',file:'respire-linux-amd64.tar.gz'},
-  {os:'linux',arch:'arm64',file:'respire-linux-arm64.tar.gz'},
+// Releases must be pinned: `releases/latest` still resolves to the stable
+// v0.2.56 tag, which predates both installers. See CLIENT_RELEASE_TAG.
+const RELEASE_API=`https://api.github.com/repos/risense-ai/respire-client2/releases/tags/${CLIENT_RELEASE_TAG}`;
+// Installer entries come first so the recommended build prefers them.
+const ASSETS:Asset[]=[
+  {os:'darwin',arch:'arm64',file:'respire-darwin-arm64.dmg',kind:'installer'},
+  {os:'darwin',arch:'arm64',file:'respire-darwin-arm64.zip',kind:'portable'},
+  {os:'darwin',arch:'amd64',file:'respire-darwin-amd64.zip',kind:'portable'},
+  {os:'windows',arch:'amd64',file:'respire-windows-amd64-setup.exe',kind:'installer'},
+  {os:'windows',arch:'amd64',file:'respire-windows-amd64.exe',kind:'portable'},
+  {os:'windows',arch:'arm64',file:'respire-windows-arm64-setup.exe',kind:'installer'},
+  {os:'windows',arch:'arm64',file:'respire-windows-arm64.exe',kind:'portable'},
+  {os:'linux',arch:'amd64',file:'respire-linux-amd64.tar.gz',kind:'portable'},
+  {os:'linux',arch:'arm64',file:'respire-linux-arm64.tar.gz',kind:'portable'},
 ];
+const pickAsset=(os:Os|null,arch:Arch|null)=>os&&arch?ASSETS.find(a=>a.os===os&&a.arch===arch):undefined;
 const OS_ICONS={darwin:Apple,windows:AppWindow,linux:Terminal} as const;
 const OS_META:{os:Os;name:{en:string;zh:string};requires:{en:string;zh:string};steps:{en:string[];zh:string[]}}[]=[
   {os:'darwin',name:{en:'macOS',zh:'macOS'},requires:{en:'macOS 12 or later',zh:'macOS 12 或更高'},
-   steps:{en:['Unzip the archive to get Respire.app and keep it in a permanent folder.','The bundle is ad-hoc signed: on first launch, right-click the app and choose Open.','The app downloads the rsrs runtime on first start, or detects an existing rsrs install.'],
-          zh:['解压得到 Respire.app，放到一个固定目录。','应用为 ad-hoc 签名：首次启动请右键点击图标并选择「打开」。','首次启动会下载 rsrs 运行时，也会识别已有的 rsrs 安装。']}},
+   steps:{en:['Open respire-darwin-arm64.dmg on Apple silicon and drag Respire.app to Applications. Intel Macs use the ZIP.','The bundle is ad-hoc signed: on first launch, right-click the app and choose Open.','The app downloads the rsrs runtime on first start, or detects an existing rsrs install.'],
+          zh:['Apple 芯片下载 respire-darwin-arm64.dmg，打开后把 Respire.app 拖入「应用程序」。Intel Mac 使用 ZIP 包。','应用为 ad-hoc 签名：首次启动请右键点击图标并选择「打开」。','首次启动会下载 rsrs 运行时，也会识别已有的 rsrs 安装。']}},
   {os:'windows',name:{en:'Windows',zh:'Windows'},requires:{en:'Windows 10 or later, Microsoft Edge WebView2',zh:'Windows 10 或更高，需 Microsoft Edge WebView2'},
-   steps:{en:['Keep respire-windows-<arch>.exe in a writable, permanent folder and run it directly.','The app downloads the rsrs runtime on first start, or detects an existing rsrs install.'],
-          zh:['把 respire-windows-<arch>.exe 放在可写的固定目录，直接运行。','首次启动会下载 rsrs 运行时，也会识别已有的 rsrs 安装。']}},
+   steps:{en:['Run respire-windows-<arch>-setup.exe. It installs per user under LocalAppData without asking for an administrator password.','The installer can add the rsrs CLI directory to your PATH; uninstalling keeps ~/.rsrs and all memory.','Prefer no installation? The portable respire-windows-<arch>.exe runs from any writable folder.'],
+          zh:['运行 respire-windows-<arch>-setup.exe。按用户安装到 LocalAppData，不需要管理员密码。','安装时可勾选把 rsrs CLI 目录加入 PATH；卸载不会删除 ~/.rsrs 与记忆数据。','不想安装？便携版 respire-windows-<arch>.exe 放在任意可写目录直接运行。']}},
   {os:'linux',name:{en:'Linux',zh:'Linux'},requires:{en:'GTK 3, WebKitGTK 4.1 and X11 libraries',zh:'GTK 3、WebKitGTK 4.1 与 X11 库'},
    steps:{en:['Extract the tarball and run the single respire executable.','glibc-based distributions are supported (Ubuntu 22.04 baseline).'],
           zh:['解压 tar 包，运行其中的单个 respire 可执行文件。','支持基于 glibc 的发行版（Ubuntu 22.04 基线）。']}},
@@ -76,7 +85,7 @@ export default function DownloadApp({initialLang}:{initialLang?:Lang}={}){
       if(cancelled)return;
       setPlatform({os,arch});
       setDetected(true);
-      const asset=os&&arch?ASSETS.find(a=>a.os===os&&a.arch===arch):undefined;
+      const asset=pickAsset(os,arch);
       if(asset&&!navigator.webdriver){setAutoAsset(asset.file);setCountdown(3);}
     })();
     return()=>{cancelled=true;};
@@ -102,8 +111,9 @@ export default function DownloadApp({initialLang}:{initialLang?:Lang}={}){
     else window.location.assign(next==='zh'?`${SITE_BASE}zh/download/`:`${SITE_BASE}download/`);
   };
   const cancelAuto=()=>{setAutoAsset('');setCountdown(null);};
-  const recommended=platform.os&&platform.arch?ASSETS.find(a=>a.os===platform.os&&a.arch===platform.arch):undefined;
+  const recommended=pickAsset(platform.os,platform.arch);
   const sizes=new Map((release?.assets??[]).map(a=>[a.name,a.size] as [string,number]));
+  const kindLabel=(kind:Kind)=>kind==='installer'?t('Installer','安装包'):t('Portable','便携版');
   const archHint=platform.os&&!platform.arch?(platform.os==='darwin'
     ?{en:'We couldn\'t detect your chip. Macs from 2020 onward use Apple silicon; earlier Macs use Intel. Pick a build below.',zh:'未能识别你的芯片。2020 年之后的 Mac 使用 Apple 芯片，更早的机型使用 Intel。请在下方选择。'}
     :{en:'We couldn\'t detect your architecture. Most machines use 64-bit (x86_64). Pick a build below.',zh:'未能识别处理器架构。多数设备为 64 位（x86_64）。请在下方选择。'}):null;
@@ -119,12 +129,13 @@ export default function DownloadApp({initialLang}:{initialLang?:Lang}={}){
     </header>
     <main className="download-main" id="main">
       <section className="download-hero">
-        <div className="section-kicker"><span>{t('DESKTOP CLIENT','桌面客户端')}</span><span>{release?.tag_name??'respire-client2'}</span></div>
+        <div className="section-kicker"><span>{t('DESKTOP CLIENT','桌面客户端')}</span><span>{release?.tag_name??CLIENT_RELEASE_TAG}</span></div>
         <h1>{t('Download Respire','下载 Respire')}<br/><em>{t('for your desktop.','装进你的桌面。')}</em></h1>
         <p className="download-lede">{t('One desktop app for macOS, Windows and Linux. It keeps your memory local, downloads the rsrs runtime on first start, and needs no Node.js, Go, npm or Rust.','一个桌面应用，覆盖 macOS、Windows 与 Linux。记忆保存在本地，首次启动自动下载 rsrs 运行时，无需安装 Node.js、Go、npm 或 Rust。')}</p>
+        <p className="download-prerelease" data-prerelease-note>{t('This build is a Dev pre-release of the 2.0 client. The previous stable release is v0.2.56 (portable builds only).','这是 2.0 客户端的 Dev 预发布版本。上一个稳定版为 v0.2.56，仅提供便携版。')}</p>
         {recommended?<div className="download-recommend" data-download-recommend data-recommended-asset={recommended.file}>
           <div className="download-recommend-info">
-            <span className="micro">{t('DETECTED SYSTEM','检测到的系统')}</span>
+            <span className="micro">{t('DETECTED SYSTEM','检测到的系统')} · {kindLabel(recommended.kind)}</span>
             <strong className="download-file">{recommended.file}{(assetSize=>assetSize!==undefined?` · ${formatSize(assetSize)}`:'')(sizes.get(recommended.file))}</strong>
             {autoAsset&&countdown!==null&&<span className="auto-chip"><Cpu size={14}/><span data-auto-countdown>{t(`Your download starts in ${countdown} s`,`${countdown} 秒后自动开始下载`)}</span><button className="text-action" onClick={cancelAuto}>{t('Cancel','取消')}</button></span>}
             {autoDone&&<span className="auto-chip" data-auto-started><Check size={14}/>{t('Download started. If nothing happened, use the button.','下载已开始。若没有反应，请使用下载按钮。')}</span>}
@@ -139,9 +150,9 @@ export default function DownloadApp({initialLang}:{initialLang?:Lang}={}){
           {OS_META.map(meta=>{const Icon=OS_ICONS[meta.os];const groupMatch=platform.os===meta.os;
             return <div className="download-group" key={meta.os} data-os={meta.os} data-recommended-group={groupMatch?'':undefined}>
               <div className="download-group-head"><Icon size={22}/><div><h2>{t(meta.name.en,meta.name.zh)}</h2><span className="download-group-requirement">{t(meta.requires.en,meta.requires.zh)}</span></div>{groupMatch&&<span className="download-badge">{t('YOUR SYSTEM','你的系统')}</span>}</div>
-              {ASSETS.filter(a=>a.os===meta.os).map(a=>{const size=sizes.get(a.file);const isRecommended=groupMatch&&platform.arch===a.arch;const isSuggested=groupMatch&&platform.arch===null;
-                return <a key={a.file} className="download-card" href={clientAssetUrl(a.file,mirror)} data-download-link data-asset={a.file} data-recommended={isRecommended?'':undefined} data-suggested={isSuggested?'':undefined}>
-                  <span className="micro">{t(a.arch==='amd64'?'64-bit (x86_64)':'ARM64',a.arch==='amd64'?'64 位（x86_64）':'ARM64')}</span>
+              {ASSETS.filter(a=>a.os===meta.os).map(a=>{const size=sizes.get(a.file);const isRecommended=recommended?.file===a.file;const isSuggested=groupMatch&&platform.arch===null;
+                return <a key={a.file} className="download-card" href={clientAssetUrl(a.file,mirror)} data-download-link data-asset={a.file} data-kind={a.kind} data-recommended={isRecommended?'':undefined} data-suggested={isSuggested?'':undefined}>
+                  <span className="card-tags"><span className="micro">{t(a.arch==='amd64'?'64-bit (x86_64)':'ARM64',a.arch==='amd64'?'64 位（x86_64）':'ARM64')}</span><span className={'kind-chip '+a.kind}>{kindLabel(a.kind)}</span></span>
                   <strong>{a.file}</strong>
                   {size!==undefined&&<span className="download-size">{formatSize(size)}</span>}
                   {isRecommended&&<span className="download-badge">{t('RECOMMENDED','推荐版本')}</span>}
@@ -152,7 +163,7 @@ export default function DownloadApp({initialLang}:{initialLang?:Lang}={}){
       <section className="download-notes">
         <div>
           <h2>{t('After the download','下载之后')}</h2>
-          <p className="download-notes-lede">{t('No installer, no dependencies. Everything the client stores lives under ~/.rsrs on your device.','无需安装器，无需额外依赖。客户端的所有数据都保存在设备的 ~/.rsrs 下。')}</p>
+          <p className="download-notes-lede">{t('Windows ships an installer and a portable EXE. Apple silicon gets a DMG; Intel Macs and Linux use archives. Everything the client stores lives under ~/.rsrs on your device.','Windows 提供安装包与便携版 EXE；Apple 芯片提供 DMG，Intel Mac 与 Linux 使用压缩包。客户端的所有数据都保存在设备的 ~/.rsrs 下。')}</p>
           <div className="download-steps" data-install-notes>
             {OS_META.map(meta=>{const Icon=OS_ICONS[meta.os];return <article key={meta.os} data-install-platform={meta.os} data-recommended-group={platform.os===meta.os?'':undefined}>
               <h3><Icon size={18}/>{t(meta.name.en,meta.name.zh)}</h3>
@@ -165,6 +176,7 @@ export default function DownloadApp({initialLang}:{initialLang?:Lang}={}){
           <h2>{t('Verify and browse','校验与更多版本')}</h2>
           <div className="download-links">
             <a href={clientAssetUrl('SHA256SUMS',mirror)} data-download-link data-asset="SHA256SUMS"><ShieldCheck size={15}/>{t('SHA256 checksums (SHA256SUMS)','SHA256 校验和（SHA256SUMS）')}</a>
+            <a href={CLIENT_RELEASE_URL} target="_blank" rel="noopener noreferrer" data-release-link><Download size={15}/>{t(`Release notes for ${CLIENT_RELEASE_TAG}`,`${CLIENT_RELEASE_TAG} 发布说明`)}</a>
             <a href={CLIENT_RELEASES_URL} target="_blank" rel="noopener noreferrer"><Download size={15}/>{t('All releases and Dev pre-releases','全部版本与 Dev 预发布')}</a>
             <a href={docsUrl(lang,'/')} target="_blank" rel="noopener noreferrer"><Terminal size={15}/>{t('Documentation','文档')}</a>
           </div>

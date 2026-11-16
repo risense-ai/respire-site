@@ -6,8 +6,14 @@ export const DOCS_URL=DOCS_ORIGIN;
 export const docsUrl=(lang:'en'|'zh',path:string)=>`${DOCS_ORIGIN}${lang==='zh'?'/zh':''}${path.startsWith('/')?path:`/${path}`}`;
 export const CLIENT_REPO_URL='https://github.com/risense-ai/respire-client2';
 export const CLIENT_RELEASES_URL=`${CLIENT_REPO_URL}/releases`;
+// Pinned desktop release. `releases/latest` still resolves to the stable
+// v0.2.56 tag, which predates the Windows setup.exe and Apple Silicon DMG, so
+// installer links would 404 there. Bump this tag with each client2 release the
+// website should serve.
+export const CLIENT_RELEASE_TAG='v2.0.0-dev.14';
+export const CLIENT_RELEASE_URL=`${CLIENT_REPO_URL}/releases/tag/${CLIENT_RELEASE_TAG}`;
 export const CLIENT_ASSET_MIRROR='https://gh-proxy.com/';
-export const clientAssetUrl=(asset:string,mirror:boolean=false)=>`${mirror?CLIENT_ASSET_MIRROR:''}${CLIENT_REPO_URL}/releases/latest/download/${asset}`;
+export const clientAssetUrl=(asset:string,mirror:boolean=false,tag:string=CLIENT_RELEASE_TAG)=>`${mirror?CLIENT_ASSET_MIRROR:''}${CLIENT_REPO_URL}/releases/download/${tag}/${asset}`;
 export const downloadUrl=(lang:'en'|'zh')=>`${SITE_BASE}${lang==='zh'?'zh/':''}download/`;
 export const SCULPTURE_URL=`${SITE_BASE}memory-fiber-sculpture.png`;
 export const MEMORY_CLOUD_URL=`${SITE_BASE}memory-cloud.bin`;

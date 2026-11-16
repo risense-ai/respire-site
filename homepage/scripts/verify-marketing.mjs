@@ -95,8 +95,10 @@ try{
   await page.waitForFunction(()=>document.querySelector('.memory-narrative')?.dataset.threadProgress==='1.000');
   // Desktop client download page. ?os=&arch= pins detection so the checks
   // are independent of the machine running them.
-  const dlAssets=['respire-darwin-arm64.zip','respire-darwin-amd64.zip','respire-windows-amd64.exe','respire-windows-arm64.exe','respire-linux-amd64.tar.gz','respire-linux-arm64.tar.gz'];
-  const assetOrigin='https://github.com/risense-ai/respire-client2/releases/latest/download/';
+  const dlAssets=['respire-darwin-arm64.dmg','respire-darwin-arm64.zip','respire-darwin-amd64.zip','respire-windows-amd64-setup.exe','respire-windows-amd64.exe','respire-windows-arm64-setup.exe','respire-windows-arm64.exe','respire-linux-amd64.tar.gz','respire-linux-arm64.tar.gz'];
+  const pinnedTag=/CLIENT_RELEASE_TAG='([^']+)'/.exec(readFileSync(new URL('../src/destinations.ts',import.meta.url),'utf8'))?.[1];
+  assert.ok(/^v\d+\.\d+\.\d+/.test(pinnedTag||''),'CLIENT_RELEASE_TAG must be a concrete version tag');
+  const assetBase=`https://github.com/risense-ai/respire-client2/releases/download/${pinnedTag}/`;
   const dl=await context.newPage();
   dl.on('pageerror',e=>errors.push(e.message));
   await dl.goto(origin+base+'download/');
@@ -104,7 +106,10 @@ try{
   assert.match(await dl.locator('h1').innerText(),/Download Respire/);
   assert.equal(await dl.locator('html').getAttribute('lang'),'en');
   assert.equal(await dl.locator('[data-download-grid] .download-group').count(),3);
-  for(const asset of dlAssets)assert.equal(await dl.locator(`[data-download-grid] [data-download-link][data-asset="${asset}"]`).getAttribute('href'),assetOrigin+asset);
+  assert.equal(await dl.locator('[data-prerelease-note]').count(),1);
+  for(const asset of dlAssets)assert.equal(await dl.locator(`[data-download-grid] [data-download-link][data-asset="${asset}"]`).getAttribute('href'),assetBase+asset);
+  assert.equal(await dl.locator('[data-download-grid] .download-card[data-kind="installer"]').count(),3,'Windows amd64/arm64 setup and the Apple silicon DMG must be labelled installers');
+  assert.equal(await dl.locator('[data-release-link]').getAttribute('href'),`https://github.com/risense-ai/respire-client2/releases/tag/${pinnedTag}`);
   assert.equal(await dl.locator('[data-auto-countdown]').count(),0,'automated browsers must not trigger the countdown download');
   await dl.goto(origin+base+'download/?os=linux&arch=amd64');
   await dl.getByRole('heading',{level:1}).waitFor();
@@ -113,17 +118,26 @@ try{
   assert.equal(await dl.locator('[data-download-grid] [data-download-link][data-asset="respire-linux-amd64.tar.gz"][data-recommended]').count(),1);
   await dl.goto(origin+base+'download/?os=windows&arch=arm64');
   await dl.getByRole('heading',{level:1}).waitFor();
-  assert.equal(await dl.locator('[data-download-recommend]').getAttribute('data-recommended-asset'),'respire-windows-arm64.exe');
+  assert.equal(await dl.locator('[data-download-recommend]').getAttribute('data-recommended-asset'),'respire-windows-arm64-setup.exe');
+  await dl.goto(origin+base+'download/?os=windows&arch=amd64');
+  await dl.getByRole('heading',{level:1}).waitFor();
+  assert.equal(await dl.locator('[data-download-recommend]').getAttribute('data-recommended-asset'),'respire-windows-amd64-setup.exe');
+  await dl.goto(origin+base+'download/?os=darwin&arch=arm64');
+  await dl.getByRole('heading',{level:1}).waitFor();
+  assert.equal(await dl.locator('[data-download-recommend]').getAttribute('data-recommended-asset'),'respire-darwin-arm64.dmg');
+  await dl.goto(origin+base+'download/?os=darwin&arch=amd64');
+  await dl.getByRole('heading',{level:1}).waitFor();
+  assert.equal(await dl.locator('[data-download-recommend]').getAttribute('data-recommended-asset'),'respire-darwin-amd64.zip','Intel Macs have no DMG and must fall back to the ZIP');
   await dl.goto(origin+base+'download/?os=darwin&arch=none');
   await dl.getByRole('heading',{level:1}).waitFor();
   assert.equal(await dl.locator('[data-download-recommend]').count(),0,'unknown architecture must not auto-pick a build');
   assert.equal(await dl.locator('[data-arch-hint]').count(),1);
   assert.equal(await dl.locator('[data-os="darwin"]').getAttribute('data-recommended-group'),'');
-  assert.equal(await dl.locator('[data-download-grid] .download-card[data-suggested]').count(),2);
+  assert.equal(await dl.locator('[data-download-grid] .download-card[data-suggested]').count(),3);
   await dl.locator('[data-mirror-toggle]').click();
-  assert.equal(await dl.locator('[data-download-grid] [data-download-link][data-asset="respire-darwin-arm64.zip"]').getAttribute('href'),'https://gh-proxy.com/'+assetOrigin+'respire-darwin-arm64.zip');
+  assert.equal(await dl.locator('[data-download-grid] [data-download-link][data-asset="respire-darwin-arm64.dmg"]').getAttribute('href'),'https://gh-proxy.com/'+assetBase+'respire-darwin-arm64.dmg');
   await dl.locator('[data-mirror-toggle]').click();
-  assert.equal(await dl.locator('[data-download-grid] [data-download-link][data-asset="respire-darwin-arm64.zip"]').getAttribute('href'),assetOrigin+'respire-darwin-arm64.zip');
+  assert.equal(await dl.locator('[data-download-grid] [data-download-link][data-asset="respire-darwin-arm64.dmg"]').getAttribute('href'),assetBase+'respire-darwin-arm64.dmg');
   await dl.goto(origin+base+'zh/download/?os=linux&arch=amd64');
   await dl.getByRole('heading',{level:1}).waitFor();
   assert.equal(await dl.locator('html').getAttribute('lang'),'zh-CN');
